@@ -12,6 +12,7 @@ import { SkillsConfig } from "./SkillsConfig";
 import { PluginsConfig } from "./PluginsConfig";
 import { SubagentsConfig } from "./SubagentsConfig";
 import { TaskBoard } from "./TaskBoard";
+import { CaseBoard } from "./CaseBoard";
 import { ThemeConfig } from "./ThemeConfig";
 import { BranchNavigator } from "./BranchNavigator";
 import { useTheme } from "@/hooks/useTheme";
@@ -42,6 +43,7 @@ export function AppShell() {
   const [pluginsConfigOpen, setPluginsConfigOpen] = useState(false);
   const [subagentsConfigOpen, setSubagentsConfigOpen] = useState(false);
   const [taskBoardOpen, setTaskBoardOpen] = useState(false);
+  const [caseBoardOpen, setCaseBoardOpen] = useState(false);
   const [themeConfigOpen, setThemeConfigOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarReady, setMobileSidebarReady] = useState(false);
@@ -700,6 +702,18 @@ export function AppShell() {
                 {!isMobile && <span>System</span>}
               </button>
               <button
+                onClick={() => setCaseBoardOpen(true)}
+                disabled={!activeCwd && !selectedSession?.cwd && !newSessionCwd}
+                title="案件与项目"
+                aria-label="案件与项目"
+                style={{ display: "flex", alignItems: "center", gap: 6, height: "100%", padding: "0 12px", background: "none", border: "none", borderTop: "2px solid transparent", borderRight: "1px solid var(--border)", color: (activeCwd || selectedSession?.cwd || newSessionCwd) ? "var(--text-muted)" : "var(--text-dim)", cursor: (activeCwd || selectedSession?.cwd || newSessionCwd) ? "pointer" : "not-allowed", opacity: (activeCwd || selectedSession?.cwd || newSessionCwd) ? 1 : .45, flexShrink: 0, fontSize: 11, whiteSpace: "nowrap" }}
+                onMouseEnter={(e) => { if (activeCwd || selectedSession?.cwd || newSessionCwd) { e.currentTarget.style.color = "var(--text)"; e.currentTarget.style.background = "var(--bg-hover)"; } }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = (activeCwd || selectedSession?.cwd || newSessionCwd) ? "var(--text-muted)" : "var(--text-dim)"; e.currentTarget.style.background = "none"; }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></svg>
+                {!isMobile && <span>Cases</span>}
+              </button>
+              <button
                 onClick={() => setTaskBoardOpen(true)}
                 disabled={!activeCwd && !selectedSession?.cwd && !newSessionCwd}
                 title="Task Board"
@@ -1120,6 +1134,12 @@ export function AppShell() {
     </button>
     {modelsConfigOpen && <ModelsConfig onModelsChanged={() => setModelsRefreshKey((k) => k + 1)} onClose={() => { setModelsConfigOpen(false); setModelsRefreshKey((k) => k + 1); }} />}
     {subagentsConfigOpen && <SubagentsConfig cwd={activeCwd ?? selectedSession?.cwd ?? newSessionCwd} onClose={() => setSubagentsConfigOpen(false)} />}
+    {caseBoardOpen && (activeCwd ?? selectedSession?.cwd ?? newSessionCwd) && (
+      <CaseBoard
+        cwd={(activeCwd ?? selectedSession?.cwd ?? newSessionCwd)!}
+        onClose={() => setCaseBoardOpen(false)}
+      />
+    )}
     {taskBoardOpen && (activeCwd ?? selectedSession?.cwd ?? newSessionCwd) && <TaskBoard cwd={(activeCwd ?? selectedSession?.cwd ?? newSessionCwd)!} onClose={() => setTaskBoardOpen(false)} />}
     {themeConfigOpen && <ThemeConfig onClose={() => setThemeConfigOpen(false)} />}
     {skillsConfigOpen && (activeCwd ?? selectedSession?.cwd ?? newSessionCwd) && (
