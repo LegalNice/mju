@@ -1,6 +1,9 @@
-import { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import { ModelRuntime, getAgentDir } from "@earendil-works/pi-coding-agent";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { NextResponse } from "next/server";
 import { invalidateModelsCache } from "@/lib/models-cache";
+import { setProviderDeleted } from "@/lib/provider-state";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +44,7 @@ export async function POST(req: Request, { params }: Params) {
         throw new Error(`${provider} requires additional authentication settings`);
       },
     });
+    setProviderDeleted(provider, false);
     invalidateModelsCache();
     return NextResponse.json({ success: true });
   } catch (error) {
@@ -54,6 +58,24 @@ export async function DELETE(_req: Request, { params }: Params) {
   try {
     const modelRuntime = await ModelRuntime.create();
     await modelRuntime.logout(provider);
+    // Pi's logout removes auth.json credentials. A provider can also carry a
+    // key in models.json, so remove that fallback configuration as well.
+    const modelsPath = join(getAgentDir(), "models.json");
+    if (existsSync(modelsPath)) {
+      try {
+        const config = JSON.parse(readFileSync(modelsPath, "utf8")) as { providers?: Record<string, Record<string, unknown>> };
+        const entry = config.providers?.[provider];
+        if (entry && Object.prototype.hasOwnProperty.call(entry, "apiKey")) {
+          const providers = { ...(config.providers ?? {}) };
+          const next = { ...entry };
+          delete next.apiKey;
+          providers[provider] = next;
+          writeFileSync(modelsPath, JSON.stringify({ ...config, providers }, null, 2), "utf8");
+        }
+      } catch {
+        // Auth has already been removed; leave malformed models.json untouched.
+      }
+    }
     invalidateModelsCache();
     return NextResponse.json({ success: true });
   } catch (error) {

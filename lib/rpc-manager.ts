@@ -6,6 +6,8 @@ import { cacheSessionPath, invalidateSessionListCache } from "./session-reader";
 import type { SlashCommandInfo } from "@earendil-works/pi-coding-agent";
 import type { AgentSessionLike, ExtensionUiContextLike, ToolInfo } from "./pi-types";
 import type { ExtensionUiRequest, ExtensionUiResponse, ExtensionWidgetItem } from "./types";
+import { createSubagentConfigTool } from "./subagent-config-tool";
+import { getPiSubagentsPaths } from "./pi-runtime-paths";
 
 // ============================================================================
 // Types
@@ -160,7 +162,7 @@ export class AgentSessionWrapper {
 
   beginExtensionBinding(options: ExtensionBindingOptions = {}): void {
     void this.ensureExtensionsBound(options).catch((err) => {
-      console.error("[pi-web] failed to dispatch session_start to extensions:", err instanceof Error ? err.message : err);
+      console.error("[mju] failed to dispatch session_start to extensions:", err instanceof Error ? err.message : err);
     });
   }
 
@@ -193,7 +195,7 @@ export class AgentSessionWrapper {
             id: randomUUID(),
             method: "notify",
             notifyType: "warning",
-            message: "Extension requested shutdown, but shutdown is not supported in pi-web.",
+            message: "Extension requested shutdown, but shutdown is not supported in Mju.",
           } as ExtensionUiRequest as AgentEvent),
           onError: (error) => this.emit({
             type: "extension_error",
@@ -207,7 +209,7 @@ export class AgentSessionWrapper {
       }
       this.extensionsBound = true;
       this.applyForcedEmptySystemPrompt();
-      console.log(`[pi-web] session_start dispatched to extensions for session ${this.inner.sessionId}`);
+      console.log(`[mju] session_start dispatched to extensions for session ${this.inner.sessionId}`);
     })().catch((err) => {
       this.extensionBindingError = err;
       throw err;
@@ -844,7 +846,7 @@ export class AgentSessionWrapper {
       get theme() { return PLAIN_TEXT_THEME; },
       getAllThemes: () => [],
       getTheme: () => undefined,
-      setTheme: () => ({ success: false, error: "Theme switching is not supported in pi-web extension UI yet" }),
+      setTheme: () => ({ success: false, error: "Theme switching is not supported in Mju extension UI yet" }),
       getToolsExpanded: () => false,
       setToolsExpanded: () => {},
     };
@@ -997,12 +999,27 @@ export async function startRpcSession(
 
     // Build services first so extension-registered providers are available
     // before the SDK restores the saved model from the session file.
-    const services = await createAgentSessionServices({ cwd, agentDir });
+    const subagentPaths = getPiSubagentsPaths();
+    const subagentResources = subagentPaths
+      ? {
+          additionalExtensionPaths: [subagentPaths.extension],
+          additionalSkillPaths: [subagentPaths.skills],
+          additionalPromptTemplatePaths: [subagentPaths.prompts],
+        }
+      : undefined;
+    const services = await createAgentSessionServices({ cwd, agentDir, ...(subagentResources ? { resourceLoaderOptions: subagentResources } : {}) });
+    let reloadAfterSubagentSave: () => Promise<void> = async () => {};
+    const configureSubagentTool = createSubagentConfigTool(cwd, () => reloadAfterSubagentSave());
     const { session: inner } = await createAgentSessionFromServices({
       services,
       sessionManager,
       ...(toolsOption !== undefined ? { tools: toolsOption } : {}),
+      customTools: [configureSubagentTool],
     });
+    reloadAfterSubagentSave = () => inner.reload();
+    if (toolNames?.length !== 0 && !inner.getActiveToolNames().includes("configure_subagent")) {
+      inner.setActiveToolsByName([...inner.getActiveToolNames(), "configure_subagent"]);
+    }
 
     // If specific tool names were requested (non-empty), set the active tools to the
     // requested builtin coding tools PLUS all extension/package tools, so installed

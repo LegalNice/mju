@@ -105,6 +105,7 @@ type SlashCommandPaletteItem = SlashCommandInfo | {
 type SlashCommandSource = SlashCommandPaletteItem["source"];
 
 const BUILTIN_SLASH_COMMANDS: SlashCommandPaletteItem[] = [
+  { name: "agent", description: "Run a configured Subagent: /agent <name> <task>", source: "builtin" },
   { name: "compact", description: "Compress context, optionally with instructions", source: "builtin" },
   { name: "reload", description: "Reload extensions, skills, prompts, and tools", source: "builtin" },
   { name: "name", description: "Set the session display name", source: "builtin" },
@@ -904,7 +905,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           }}>
             <div style={{
               display: "flex",
-              alignItems: "center",
+              alignItems: "flex-start",
               justifyContent: "space-between",
               gap: 8,
               padding: "2px 8px 4px 10px",
@@ -1248,17 +1249,18 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             );
           })()}
           <div
+            className="chat-composer"
             style={{
               display: "flex",
               gap: 8,
-              alignItems: "center",
+              alignItems: "flex-start",
               background: "var(--bg)",
               border: `1px solid ${isStreaming && (onSteer || onFollowUp)
                 ? "rgba(234,179,8,0.4)"
                 : "color-mix(in srgb, var(--border) 70%, transparent)"}`,
-              borderRadius: 14,
-              padding: "10px 10px 10px 14px",
-              boxShadow: "0 1px 2px rgba(15,23,42,0.04), 0 8px 24px -12px rgba(15,23,42,0.10)",
+              borderRadius: 20,
+              padding: "14px 14px 12px 16px",
+              boxShadow: "0 1px 2px rgba(15,23,42,0.04), 0 10px 28px -12px rgba(15,23,42,0.14)",
               transition: "border-color 0.15s, background 0.15s, box-shadow 0.15s",
             } as React.CSSProperties}
           >
@@ -1289,21 +1291,21 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               isStreaming && (onSteer || onFollowUp)
                 ? "Steer now / queue follow-up..."
                 : isStreaming ? "Agent is running…"
-                : "Message… Type / for commands, @ for files"
+                : "Message… / commands · @ files · /agent name task"
             }
-            rows={1}
+            rows={2}
             style={{
               flex: 1,
               background: "none",
               border: "none",
               outline: "none",
-              resize: "none",
               color: "var(--text)",
               fontSize: 14,
               lineHeight: 1.6,
               fontFamily: "inherit",
-              minHeight: 24,
-              maxHeight: 200,
+              minHeight: 58,
+              resize: "vertical",
+              maxHeight: 360,
               overflow: "auto",
             }}
           />
