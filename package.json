@@ -1,18 +1,13 @@
 {
-  "name": "@agegr/pi-web",
+  "name": "mju",
   "version": "0.7.16",
-  "description": "Web UI for the pi coding agent",
-  "homepage": "https://github.com/agegr/pi-web#readme",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/agegr/pi-web.git"
-  },
-  "bugs": {
-    "url": "https://github.com/agegr/pi-web/issues"
-  },
+  "description": "Mju Agents: a local-first browser workspace with a bundled Pi runtime and subagents",
   "license": "MIT",
+  "engines": {
+    "node": ">=22.19.0"
+  },
   "bin": {
-    "pi-web": "bin/pi-web.js"
+    "mju": "bin/mju.js"
   },
   "files": [
     "bin",
@@ -25,9 +20,9 @@
     "package.json"
   ],
   "scripts": {
-    "dev": "next dev -p 30141",
+    "dev": "next dev -p 30142",
     "build": "next build --webpack",
-    "start": "next start -p 30141",
+    "start": "next start -p 30142",
     "lint": "eslint .",
     "release": "npm version patch --no-git-tag-version && npm run build && npm publish --access public"
   },
@@ -41,6 +36,7 @@
     "mammoth": "^1.12.0",
     "mermaid": "^11.14.0",
     "next": "16.2.9",
+    "pi-subagents": "^0.35.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-markdown": "^10.1.0",

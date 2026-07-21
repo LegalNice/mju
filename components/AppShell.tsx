@@ -10,6 +10,9 @@ import { TabBar, type Tab } from "./TabBar";
 import { ModelsConfig } from "./ModelsConfig";
 import { SkillsConfig } from "./SkillsConfig";
 import { PluginsConfig } from "./PluginsConfig";
+import { SubagentsConfig } from "./SubagentsConfig";
+import { TaskBoard } from "./TaskBoard";
+import { ThemeConfig } from "./ThemeConfig";
 import { BranchNavigator } from "./BranchNavigator";
 import { useTheme } from "@/hooks/useTheme";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -37,6 +40,9 @@ export function AppShell() {
   const [modelsRefreshKey, setModelsRefreshKey] = useState(0);
   const [skillsConfigOpen, setSkillsConfigOpen] = useState(false);
   const [pluginsConfigOpen, setPluginsConfigOpen] = useState(false);
+  const [subagentsConfigOpen, setSubagentsConfigOpen] = useState(false);
+  const [taskBoardOpen, setTaskBoardOpen] = useState(false);
+  const [themeConfigOpen, setThemeConfigOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarReady, setMobileSidebarReady] = useState(false);
   // On mobile the sidebar is an overlay drawer; hide it by default so the chat
@@ -186,7 +192,7 @@ export function AppShell() {
   // Update browser tab title when workspace changes
   useEffect(() => {
     const name = activeCwd ? getFileName(activeCwd) || activeCwd : null;
-    document.title = name ? `${name} — Pi Agent Web` : "Pi Agent Web";
+    document.title = name ? `${name} — Mju Agents` : "Mju Agents";
   }, [activeCwd]);
 
   const handleSelectSession = useCallback((session: SessionInfo, isRestore = false) => {
@@ -352,7 +358,11 @@ export function AppShell() {
         onAtMention={handleAtMention}
         onAtMentions={handleAtMentions}
       />
-      <div style={{ padding: "8px", flexShrink: 0, display: "flex", justifyContent: "space-between", gap: 4 }}>
+      <div style={{ padding: "10px 10px 12px", flexShrink: 0, borderTop: "1px solid var(--border)", background: "color-mix(in srgb, var(--bg-panel) 72%, transparent)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 3px 8px", color: "var(--text-dim)", fontSize: 10, fontWeight: 700, letterSpacing: "0.12em" }}>
+          <span>WORKSPACE</span><span style={{ fontSize: 9, letterSpacing: "0.04em", fontWeight: 500 }}>CONFIGURE</span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 3 }}>
         {([
           {
             label: "Models",
@@ -381,6 +391,14 @@ export function AppShell() {
             ),
           },
           {
+            label: "Agents",
+            onClick: () => setSubagentsConfigOpen(true),
+            disabled: false,
+            icon: (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="5" r="3" /><circle cx="5" cy="19" r="3" /><circle cx="19" cy="19" r="3" /><path d="M12 8v4M9.5 16.5l1.5-2.5M14.5 16.5L13 14" /></svg>
+            ),
+          },
+          {
             label: "Plugins",
             onClick: () => setPluginsConfigOpen(true),
             disabled: !activeCwd && !selectedSession?.cwd && !newSessionCwd,
@@ -393,6 +411,14 @@ export function AppShell() {
               </svg>
             ),
           },
+          {
+            label: "Theme",
+            onClick: () => setThemeConfigOpen(true),
+            disabled: false,
+            icon: (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>
+            ),
+          },
         ] as { label: string; onClick: () => void; disabled: boolean; icon: React.ReactNode }[]).map(({ label, onClick, disabled, icon }) => (
           <button
             key={label}
@@ -400,19 +426,19 @@ export function AppShell() {
             disabled={disabled}
             title={label}
             style={{
-              flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-              height: 32, padding: 0, background: "none", border: "none",
+              minWidth: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
+              height: 30, padding: 0, background: "transparent", border: "none",
               borderRadius: 9, color: "var(--text-muted)", cursor: disabled ? "default" : "pointer",
-              fontSize: 12, opacity: disabled ? 0.35 : 1,
+              fontSize: 11, opacity: disabled ? 0.35 : 1,
               transition: "background 0.12s, color 0.12s",
             }}
             onMouseEnter={(e) => { if (!disabled) { e.currentTarget.style.background = "var(--bg-hover)"; e.currentTarget.style.color = "var(--text)"; } }}
             onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "var(--text-muted)"; }}
           >
-            {icon}
-            {label}
+            {icon}<span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
           </button>
         ))}
+        </div>
       </div>
     </>
   );
@@ -522,9 +548,9 @@ export function AppShell() {
       </div>
 
       {/* Center: chat */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
+      <div className="app-main" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
         {/* Top bar with sidebar toggle */}
-        <div ref={topBarRef} style={{ display: "flex", alignItems: "center", flexShrink: 0, borderBottom: "1px solid var(--border)", height: 36, background: "var(--bg-panel)" }}>
+        <div ref={topBarRef} className="app-topbar" style={{ display: "flex", alignItems: "center", flexShrink: 0, borderBottom: "1px solid var(--border)", height: 36, background: "var(--bg-panel)" }}>
           <button
             onClick={handleSidebarToggle}
             title={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
@@ -672,6 +698,18 @@ export function AppShell() {
                   <line x1="8" y1="17" x2="13" y2="17" />
                 </svg>
                 {!isMobile && <span>System</span>}
+              </button>
+              <button
+                onClick={() => setTaskBoardOpen(true)}
+                disabled={!activeCwd && !selectedSession?.cwd && !newSessionCwd}
+                title="Task Board"
+                aria-label="Task Board"
+                style={{ display: "flex", alignItems: "center", gap: 6, height: "100%", padding: "0 12px", background: "none", border: "none", borderTop: "2px solid transparent", borderRight: "1px solid var(--border)", color: (activeCwd || selectedSession?.cwd || newSessionCwd) ? "var(--text-muted)" : "var(--text-dim)", cursor: (activeCwd || selectedSession?.cwd || newSessionCwd) ? "pointer" : "not-allowed", opacity: (activeCwd || selectedSession?.cwd || newSessionCwd) ? 1 : .45, flexShrink: 0, fontSize: 11, whiteSpace: "nowrap" }}
+                onMouseEnter={(e) => { if (activeCwd || selectedSession?.cwd || newSessionCwd) { e.currentTarget.style.color = "var(--text)"; e.currentTarget.style.background = "var(--bg-hover)"; } }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = (activeCwd || selectedSession?.cwd || newSessionCwd) ? "var(--text-muted)" : "var(--text-dim)"; e.currentTarget.style.background = "none"; }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="5" height="16" rx="1" /><rect x="10" y="4" width="5" height="10" rx="1" /><rect x="17" y="4" width="4" height="7" rx="1" /></svg>
+                {!isMobile && <span>Board</span>}
               </button>
             </div>
           )}
@@ -991,6 +1029,7 @@ export function AppShell() {
               onSessionStatsPanelOpen={openSessionStatsPanel}
               onContextUsageChange={handleContextUsageChange}
               onOpenFile={handleOpenLinkedFile}
+              onWorkspaceChange={(cwd) => handleNewSession(`workspace-${Date.now()}`, cwd)}
             />
           ) : showPlaceholder ? (
             activeCwd ? (
@@ -1079,7 +1118,10 @@ export function AppShell() {
         <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="15" y1="3" x2="15" y2="21" />
       </svg>
     </button>
-    {modelsConfigOpen && <ModelsConfig onClose={() => { setModelsConfigOpen(false); setModelsRefreshKey((k) => k + 1); }} />}
+    {modelsConfigOpen && <ModelsConfig onModelsChanged={() => setModelsRefreshKey((k) => k + 1)} onClose={() => { setModelsConfigOpen(false); setModelsRefreshKey((k) => k + 1); }} />}
+    {subagentsConfigOpen && <SubagentsConfig cwd={activeCwd ?? selectedSession?.cwd ?? newSessionCwd} onClose={() => setSubagentsConfigOpen(false)} />}
+    {taskBoardOpen && (activeCwd ?? selectedSession?.cwd ?? newSessionCwd) && <TaskBoard cwd={(activeCwd ?? selectedSession?.cwd ?? newSessionCwd)!} onClose={() => setTaskBoardOpen(false)} />}
+    {themeConfigOpen && <ThemeConfig onClose={() => setThemeConfigOpen(false)} />}
     {skillsConfigOpen && (activeCwd ?? selectedSession?.cwd ?? newSessionCwd) && (
       <SkillsConfig cwd={(activeCwd ?? selectedSession?.cwd ?? newSessionCwd)!} onClose={() => setSkillsConfigOpen(false)} />
     )}
