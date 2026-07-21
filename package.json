@@ -21,6 +21,7 @@
   ],
   "scripts": {
     "dev": "next dev -p 30142",
+    "dev:webpack": "next dev --webpack -p 30142",
     "build": "next build --webpack",
     "start": "next start -p 30142",
     "lint": "eslint .",
