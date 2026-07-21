@@ -10,8 +10,8 @@ const notoSansMono = Noto_Sans_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Pi Agent Web",
-  description: "Pi Coding Agent Web Interface",
+  title: "Mju Agents",
+  description: "μ 本地智能体工作台",
 };
 
 export default function RootLayout({
@@ -25,7 +25,7 @@ export default function RootLayout({
         <meta name="google" content="notranslate" />
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem("pi-theme");if(t==="dark")document.documentElement.classList.add("dark")}catch(e){}})();`,
+            __html: `(function(){try{var v=localStorage.getItem("mju-visual-theme")||localStorage.getItem("pi-visual-theme")||((localStorage.getItem("mju-theme")||localStorage.getItem("pi-theme"))==="dark"?"night":"paper");document.documentElement.dataset.theme=v;if(v==="night"||v==="terminal")document.documentElement.classList.add("dark")}catch(e){}})();`,
           }}
         />
       </head>

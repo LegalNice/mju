@@ -34,6 +34,7 @@ interface Props {
   onSessionStatsPanelOpen?: () => void;
   onContextUsageChange?: (usage: { percent: number | null; contextWindow: number; tokens: number | null } | null) => void;
   onOpenFile?: (filePath: string) => void;
+  onWorkspaceChange?: (cwd: string) => void;
 }
 
 function phaseLabel(phase: AgentPhase): string {
@@ -140,7 +141,7 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, children }: { messag
   );
 }
 
-export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile }: Props) {
+export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, onWorkspaceChange }: Props) {
   const { soundEnabled, onSoundToggle, playDoneSound, unlockAudio } = useAudio();
   const isMobile = useIsMobile();
 
@@ -277,6 +278,30 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
 
   const isEmptyNew = isNew && messages.length === 0 && !streamState.isStreaming && !agentRunning;
   const messageCwd = session?.cwd ?? newSessionCwd ?? undefined;
+  const [workspacePickerBusy, setWorkspacePickerBusy] = useState(false);
+  const [workspacePickerError, setWorkspacePickerError] = useState<string | null>(null);
+
+  const handlePickWorkspace = useCallback(async () => {
+    if (workspacePickerBusy) return;
+    setWorkspacePickerBusy(true);
+    setWorkspacePickerError(null);
+    try {
+      const desktop = window.piDesktop;
+      const picked = desktop
+        ? await desktop.selectDirectory()
+        : await fetch("/api/cwd/pick", { method: "POST" }).then(async (res) => {
+            const data = await res.json().catch(() => ({})) as { cwd?: string; cancelled?: boolean; error?: string };
+            if (data.cancelled) return null;
+            if (!res.ok || !data.cwd) throw new Error(data.error ?? `HTTP ${res.status}`);
+            return data.cwd;
+          });
+      if (picked) onWorkspaceChange?.(picked);
+    } catch (error) {
+      setWorkspacePickerError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setWorkspacePickerBusy(false);
+    }
+  }, [onWorkspaceChange, workspacePickerBusy]);
 
   const availableThinkingLevels = displayModelValue
     ? (modelThinkingLevels[`${displayModelValue.provider}:${displayModelValue.modelId}`] ?? null)
@@ -402,30 +427,31 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
       {isEmptyNew ? (
         <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-8">
           <div className="w-full max-w-[820px]">
-            <div
-              className="mb-3"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 12,
-                marginLeft: 16,
-                marginRight: 52,
-                fontFamily: "var(--font-mono)",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0, flex: 1, lineHeight: 1.4, overflow: "hidden" }}>
-                <span style={{ fontSize: 28, fontWeight: 700, letterSpacing: 0, color: "var(--text)", flexShrink: 0, whiteSpace: "nowrap" }}>π</span>
-                <span style={{ fontSize: 22, color: "var(--text)", fontWeight: 700, letterSpacing: 0, flexShrink: 0, whiteSpace: "nowrap" }}>Pi Agent Web</span>
+            <div style={{ width: "min(100%, 460px)", maxWidth: "100%", margin: "0 auto" }}>
+              <div
+                className="mb-3"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 12,
+                  fontFamily: "Georgia, \"Songti SC\", \"STSong\", serif",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 10, minWidth: 0, lineHeight: 1.4 }}>
+                  <span style={{ fontFamily: "Iowan Old Style, Baskerville, serif", fontSize: 23, color: "var(--text)", fontWeight: 400, fontStyle: "italic", letterSpacing: "-0.025em", textAlign: "center", whiteSpace: "normal" }}>
+                    Your tough but fair {" "}
+                    <span style={{ fontFamily: "Cochin, Georgia, serif", fontSize: "1.02em", fontStyle: "italic", fontWeight: 700, letterSpacing: "0.025em", whiteSpace: "nowrap" }}>LEGAL ASSISTANT</span>.
+                  </span>
+                </div>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, flexShrink: 0 }}>
-                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                  web <span style={{ color: "var(--text)" }}>v{process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0"}</span>
-                </span>
-                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                  pi <span style={{ color: "var(--text)" }}>v{process.env.NEXT_PUBLIC_PI_VERSION ?? "0.0.0"}</span>
-                </span>
-              </div>
+              <button type="button" className="workspace-chip" title={workspacePickerError ?? "点击选择本地工作区"} onClick={() => void handlePickWorkspace()} disabled={workspacePickerBusy} style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box", margin: "0 auto 12px", cursor: workspacePickerBusy ? "wait" : "pointer", opacity: workspacePickerBusy ? 0.7 : 1 }}>
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M2.5 4.5h4l1.3 1.5h5.7v6.5h-11z" />
+                  <path d="M2.5 4.5V3.2h4.1l1.2 1.3" />
+                </svg>
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)", fontSize: 11 }}>{messageCwd ?? "未选择工作区"}</span>
+              </button>
             </div>
             <NoticeShelf notices={notices} align="right" />
             {chatInputElement}

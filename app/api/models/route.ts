@@ -3,6 +3,8 @@ import { resolve } from "path";
 import { createAgentSessionServices, getAgentDir, type SettingsManager } from "@earendil-works/pi-coding-agent";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import { loadModelsWithCache, type ModelsData } from "@/lib/models-cache";
+import { isModelVisible, readModelVisibility } from "@/lib/model-visibility";
+import { isProviderDeleted } from "@/lib/provider-state";
 
 export const dynamic = "force-dynamic";
 
@@ -50,7 +52,9 @@ async function loadModels(cwd: string): Promise<ModelsData> {
   const available = await services.modelRuntime.getAvailable();
   const settings: SettingsManager = services.settingsManager;
   const enabledModels = settings.getEnabledModels();
-  const visible = filterByExactEnabledModels(available, enabledModels);
+  const configured = filterByExactEnabledModels(available, enabledModels);
+  const visibility = readModelVisibility();
+  const visible = configured.filter((m) => !isProviderDeleted(m.provider) && isModelVisible(visibility, m.provider, m.id));
   modelList = visible.map((m: { id: string; name: string; provider: string }) => ({
     id: m.id,
     name: m.name,

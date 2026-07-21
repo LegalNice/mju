@@ -124,6 +124,7 @@ interface ModelEntry {
 }
 
 interface ProviderEntry {
+  name?: string;
   baseUrl?: string;
   api?: string;
   apiKey?: string;
@@ -335,6 +336,8 @@ function ProviderDetail({ name, provider, onChange, onRename, onDelete }: {
       <Field label="API">
         <Select value={provider.api ?? "openai-completions"} onChange={(v) => set("api", v)} options={API_OPTIONS} required />
       </Field>
+
+      <ModelActivationList providerName={name} />
     </div>
   );
 }
@@ -959,24 +962,83 @@ function OAuthDetail({ provider, onRefresh }: { provider: OAuthProvider; onRefre
           </>
         )}
       </div>
+      <ModelActivationList providerName={provider.id} />
+    </div>
+  );
+}
+
+function ModelActivationList({ providerName }: { providerName: string }) {
+  const [models, setModels] = useState<{ id: string; name?: string }[]>([]);
+  const [visibility, setVisibility] = useState<Record<string, boolean>>({});
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      fetch(`/api/models-config/catalog?provider=${encodeURIComponent(providerName)}`).then((r) => r.json()),
+      fetch("/api/models-config/visibility").then((r) => r.json()),
+    ]).then(([catalog, stored]) => {
+      if (cancelled) return;
+      setModels(catalog.models ?? []);
+      setVisibility(stored.providers?.[providerName] ?? {});
+    }).catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); });
+    return () => { cancelled = true; };
+  }, [providerName]);
+
+  const toggle = async (modelId: string, enabled: boolean) => {
+    setVisibility((prev) => ({ ...prev, [modelId]: enabled }));
+    const res = await fetch("/api/models-config/visibility", {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: providerName, modelId, enabled }),
+    });
+    if (!res.ok) setError("保存模型显示设置失败");
+    window.dispatchEvent(new Event("pi-models-changed"));
+  };
+
+  return (
+    <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14 }}>
+      <SectionTitle>Active models</SectionTitle>
+      <p style={{ margin: "6px 0 10px", fontSize: 11, color: "var(--text-dim)", lineHeight: 1.45 }}>关闭不常用的模型后，它们不会出现在对话框的模型列表中。</p>
+      {error && <div style={{ color: "#ef4444", fontSize: 11, marginBottom: 8 }}>{error}</div>}
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {models.map((model) => {
+          const enabled = visibility[model.id] !== false;
+          return <label key={model.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", border: "1px solid var(--border)", borderRadius: 5, cursor: "pointer" }}>
+            <input type="checkbox" checked={enabled} onChange={(e) => void toggle(model.id, e.target.checked)} />
+            <span style={{ fontSize: 12, color: "var(--text)", flex: 1 }}>{model.name || model.id}</span>
+            <code style={{ fontSize: 10, color: "var(--text-dim)" }}>{model.id}</code>
+          </label>;
+        })}
+        {models.length === 0 && <span style={{ fontSize: 11, color: "var(--text-dim)" }}>暂无可配置模型</span>}
+      </div>
     </div>
   );
 }
 
 // ── API Key detail ────────────────────────────────────────────────────────────
 
-function ApiKeyDetail({ provider, onRefresh }: { provider: ApiKeyProvider; onRefresh: () => void }) {
+function ApiKeyDetail({ provider, onRefresh, onAccountCreated, onModelsChanged }: { provider: ApiKeyProvider; onRefresh: () => void; onAccountCreated?: (providerName: string) => void; onModelsChanged?: () => void }) {
   const [apiKey, setApiKey] = useState("");
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedOk, setSavedOk] = useState(false);
+  const [accountFormOpen, setAccountFormOpen] = useState(false);
+  const [accountName, setAccountName] = useState("");
+  const [accountKey, setAccountKey] = useState("");
+  const [accountSaving, setAccountSaving] = useState(false);
+  const [accountError, setAccountError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   // Reset state when provider changes
   useEffect(() => {
     setApiKey("");
     setError(null);
     setSavedOk(false);
+    setAccountFormOpen(false);
+    setAccountName("");
+    setAccountKey("");
+    setAccountError(null);
   }, [provider.id]);
 
   const handleSave = useCallback(async () => {
@@ -1020,6 +1082,47 @@ function ApiKeyDetail({ provider, onRefresh }: { provider: ApiKeyProvider; onRef
       setRemoving(false);
     }
   }, [provider.id, onRefresh]);
+
+  const handleAddAccount = useCallback(async () => {
+    if (!accountKey.trim()) return;
+    setAccountSaving(true);
+    setAccountError(null);
+    try {
+      const res = await fetch("/api/models-config/accounts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: provider.id, accountName: accountName.trim() || undefined, apiKey: accountKey.trim() }),
+      });
+      const data = await res.json() as { providerName?: string; error?: string };
+      if (!res.ok || data.error || !data.providerName) throw new Error(data.error ?? `HTTP ${res.status}`);
+      setAccountKey("");
+      setAccountName("");
+      setAccountFormOpen(false);
+      onAccountCreated?.(data.providerName);
+      onRefresh();
+    } catch (e) {
+      setAccountError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAccountSaving(false);
+    }
+  }, [accountKey, accountName, onAccountCreated, onRefresh, provider.id]);
+
+  const handleDeleteProvider = useCallback(async () => {
+    if (!window.confirm(`删除 ${provider.displayName} 的配置？这会移除该供应商的认证和自定义配置。`)) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/models-config/providers/${encodeURIComponent(provider.id)}`, { method: "DELETE" });
+      const data = await res.json() as { error?: string };
+      if (!res.ok || data.error) throw new Error(data.error ?? `HTTP ${res.status}`);
+      onModelsChanged?.();
+      onRefresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDeleting(false);
+    }
+  }, [onModelsChanged, onRefresh, provider.displayName, provider.id]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -1077,19 +1180,49 @@ function ApiKeyDetail({ provider, onRefresh }: { provider: ApiKeyProvider; onRef
       {error && <p style={{ margin: 0, fontSize: 12, color: "#f87171" }}>{error}</p>}
 
       {provider.configured && (
-        <button
-          onClick={handleRemove}
-          disabled={removing}
-          style={{
-            alignSelf: "flex-start", padding: "5px 12px",
-            background: "none", border: "1px solid rgba(239,68,68,0.3)",
-            borderRadius: 5, color: "#ef4444",
-            cursor: removing ? "not-allowed" : "pointer", fontSize: 12,
-          }}
-        >
-          {removing ? "Removing…" : "Disconnect"}
-        </button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button
+            onClick={handleRemove}
+            disabled={removing || deleting}
+            style={{
+              padding: "5px 12px", background: "none", border: "1px solid rgba(239,68,68,0.3)",
+              borderRadius: 5, color: "#ef4444",
+              cursor: removing || deleting ? "not-allowed" : "pointer", fontSize: 12,
+            }}
+          >
+            {removing ? "Removing…" : "Disconnect"}
+          </button>
+          <button
+            onClick={() => void handleDeleteProvider()}
+            disabled={removing || deleting}
+            style={{
+              padding: "5px 12px", background: "#ef4444", border: "1px solid #ef4444",
+              borderRadius: 5, color: "#fff",
+              cursor: removing || deleting ? "not-allowed" : "pointer", fontSize: 12,
+            }}
+          >
+            {deleting ? "Deleting…" : "Delete provider"}
+          </button>
+        </div>
       )}
+
+      <div style={{ paddingTop: 4, borderTop: "1px solid var(--border)" }}>
+        <button type="button" onClick={() => { setAccountFormOpen((open) => !open); setAccountError(null); }} style={{ padding: 0, border: 0, background: "none", color: "var(--accent)", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
+          {accountFormOpen ? "− Cancel" : "+ Add another account"}
+        </button>
+        {accountFormOpen && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10, padding: 12, border: "1px solid var(--border)", borderRadius: 8, background: "var(--bg-panel)" }}>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.45 }}>为同一供应商创建独立账号别名。保存后会出现在自定义 Providers 中，可分别选择模型。</div>
+            <TextInput value={accountName} onChange={setAccountName} placeholder="账号名称，例如 Personal / Work" />
+            <SecretTextInput value={accountKey} onChange={setAccountKey} placeholder="新的 API key" autoComplete="off" spellCheck={false} mono />
+            {accountError && <div style={{ color: "#ef4444", fontSize: 11 }}>{accountError}</div>}
+            <button type="button" onClick={() => void handleAddAccount()} disabled={accountSaving || !accountKey.trim()} style={{ alignSelf: "flex-start", padding: "6px 11px", border: 0, borderRadius: 5, background: accountKey.trim() ? "var(--accent)" : "var(--bg-hover)", color: accountKey.trim() ? "#fff" : "var(--text-dim)", cursor: accountSaving || !accountKey.trim() ? "not-allowed" : "pointer", fontSize: 11, fontWeight: 650 }}>
+              {accountSaving ? "Creating…" : "Create account"}
+            </button>
+          </div>
+        )}
+      </div>
+      <ModelActivationList providerName={provider.id} />
     </div>
   );
 }
@@ -1157,7 +1290,7 @@ function AddProviderPicker({
   const q = search.trim().toLowerCase();
 
   const availableOAuth = oauthProviders.filter((p) => !p.loggedIn && (!q || p.name.toLowerCase().includes(q)));
-  const availableApiKey = apiKeyProviders.filter((p) => !p.configured && (!q || p.displayName.toLowerCase().includes(q) || p.id.toLowerCase().includes(q)));
+  const availableApiKey = apiKeyProviders.filter((p) => (!q || p.displayName.toLowerCase().includes(q) || p.id.toLowerCase().includes(q)));
   const showCustom = !q || "custom".includes(q) || "openai-compatible".includes(q) || "anthropic-compatible".includes(q);
 
   const totalCount = availableOAuth.length + availableApiKey.length + (showCustom ? 1 : 0);
@@ -1255,7 +1388,7 @@ function AddProviderPicker({
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.displayName}</div>
-                    <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 2 }}>{p.modelCount} models</div>
+                    <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 2 }}>{p.configured ? "已配置 · 添加另一个账号" : `${p.modelCount} models`}</div>
                   </div>
                   <ProviderIcon id={p.id} size={28} />
                 </button>
@@ -1271,7 +1404,7 @@ function AddProviderPicker({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function ModelsConfig({ onClose }: { onClose: () => void }) {
+export function ModelsConfig({ onClose, onModelsChanged }: { onClose: () => void; onModelsChanged?: () => void }) {
   const isMobile = useIsMobile();
   const [config, setConfig] = useState<ModelsJson>({ providers: {} });
   const [loading, setLoading] = useState(true);
@@ -1405,6 +1538,14 @@ export function ModelsConfig({ onClose }: { onClose: () => void }) {
     }
   }, [config]);
 
+  const handleAccountCreated = useCallback(async (providerName: string) => {
+    const res = await fetch("/api/models-config");
+    if (!res.ok) return;
+    const next = await res.json() as ModelsJson;
+    setConfig(next);
+    setSelection({ type: "provider", name: providerName });
+  }, []);
+
   const providers = Object.entries(config.providers ?? {});
   const activeOAuth = oauthProviders.filter((p) => p.loggedIn);
   const activeApiKey = apiKeyProviders.filter((p) => p.configured);
@@ -1420,7 +1561,7 @@ export function ModelsConfig({ onClose }: { onClose: () => void }) {
     if (selection.type === "apikey") {
       const p = apiKeyProviders.find((p) => p.id === selection.providerId);
       if (!p) return null;
-      return <ApiKeyDetail key={p.id} provider={p} onRefresh={loadApiKeyProviders} />;
+      return <ApiKeyDetail key={p.id} provider={p} onRefresh={loadApiKeyProviders} onAccountCreated={handleAccountCreated} onModelsChanged={onModelsChanged} />;
     }
     if (selection.type === "provider") {
       const provider = config.providers?.[selection.name];
