@@ -24,6 +24,7 @@
     "dev:webpack": "next dev --webpack -p 30142",
     "build": "next build --webpack",
     "start": "next start -p 30142",
+    "test:backend": "node --test lib/mju-store.test.mjs app/api/legal-routes.test.mjs",
     "lint": "eslint .",
     "release": "npm version patch --no-git-tag-version && npm run build && npm publish --access public"
   },

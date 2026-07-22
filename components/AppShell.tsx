@@ -11,8 +11,9 @@ import { ModelsConfig } from "./ModelsConfig";
 import { SkillsConfig } from "./SkillsConfig";
 import { PluginsConfig } from "./PluginsConfig";
 import { SubagentsConfig } from "./SubagentsConfig";
-import { TaskBoard } from "./TaskBoard";
+import { LegalTaskBoard } from "./LegalTaskBoard";
 import { CaseBoard } from "./CaseBoard";
+import { DeadlinePanel } from "./DeadlinePanel";
 import { ThemeConfig } from "./ThemeConfig";
 import { BranchNavigator } from "./BranchNavigator";
 import { useTheme } from "@/hooks/useTheme";
@@ -42,7 +43,8 @@ export function AppShell() {
   const [skillsConfigOpen, setSkillsConfigOpen] = useState(false);
   const [pluginsConfigOpen, setPluginsConfigOpen] = useState(false);
   const [subagentsConfigOpen, setSubagentsConfigOpen] = useState(false);
-  const [taskBoardOpen, setTaskBoardOpen] = useState(false);
+  const [legalTaskBoardOpen, setLegalTaskBoardOpen] = useState(false);
+  const [deadlinePanelOpen, setDeadlinePanelOpen] = useState(false);
   const [caseBoardOpen, setCaseBoardOpen] = useState(false);
   const [themeConfigOpen, setThemeConfigOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -714,16 +716,28 @@ export function AppShell() {
                 {!isMobile && <span>Cases</span>}
               </button>
               <button
-                onClick={() => setTaskBoardOpen(true)}
+                onClick={() => setLegalTaskBoardOpen(true)}
                 disabled={!activeCwd && !selectedSession?.cwd && !newSessionCwd}
-                title="Task Board"
-                aria-label="Task Board"
+                title="法律任务"
+                aria-label="法律任务"
                 style={{ display: "flex", alignItems: "center", gap: 6, height: "100%", padding: "0 12px", background: "none", border: "none", borderTop: "2px solid transparent", borderRight: "1px solid var(--border)", color: (activeCwd || selectedSession?.cwd || newSessionCwd) ? "var(--text-muted)" : "var(--text-dim)", cursor: (activeCwd || selectedSession?.cwd || newSessionCwd) ? "pointer" : "not-allowed", opacity: (activeCwd || selectedSession?.cwd || newSessionCwd) ? 1 : .45, flexShrink: 0, fontSize: 11, whiteSpace: "nowrap" }}
                 onMouseEnter={(e) => { if (activeCwd || selectedSession?.cwd || newSessionCwd) { e.currentTarget.style.color = "var(--text)"; e.currentTarget.style.background = "var(--bg-hover)"; } }}
                 onMouseLeave={(e) => { e.currentTarget.style.color = (activeCwd || selectedSession?.cwd || newSessionCwd) ? "var(--text-muted)" : "var(--text-dim)"; e.currentTarget.style.background = "none"; }}
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="5" height="16" rx="1" /><rect x="10" y="4" width="5" height="10" rx="1" /><rect x="17" y="4" width="4" height="7" rx="1" /></svg>
-                {!isMobile && <span>Board</span>}
+                {!isMobile && <span>Tasks</span>}
+              </button>
+              <button
+                onClick={() => setDeadlinePanelOpen(true)}
+                disabled={!activeCwd && !selectedSession?.cwd && !newSessionCwd}
+                title="期限与日程"
+                aria-label="期限与日程"
+                style={{ display: "flex", alignItems: "center", gap: 6, height: "100%", padding: "0 12px", background: "none", border: "none", borderTop: "2px solid transparent", borderRight: "1px solid var(--border)", color: (activeCwd || selectedSession?.cwd || newSessionCwd) ? "var(--text-muted)" : "var(--text-dim)", cursor: (activeCwd || selectedSession?.cwd || newSessionCwd) ? "pointer" : "not-allowed", opacity: (activeCwd || selectedSession?.cwd || newSessionCwd) ? 1 : .45, flexShrink: 0, fontSize: 11, whiteSpace: "nowrap" }}
+                onMouseEnter={(e) => { if (activeCwd || selectedSession?.cwd || newSessionCwd) { e.currentTarget.style.color = "var(--text)"; e.currentTarget.style.background = "var(--bg-hover)"; } }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = (activeCwd || selectedSession?.cwd || newSessionCwd) ? "var(--text-muted)" : "var(--text-dim)"; e.currentTarget.style.background = "none"; }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="17" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
+                {!isMobile && <span>Dates</span>}
               </button>
             </div>
           )}
@@ -1140,7 +1154,8 @@ export function AppShell() {
         onClose={() => setCaseBoardOpen(false)}
       />
     )}
-    {taskBoardOpen && (activeCwd ?? selectedSession?.cwd ?? newSessionCwd) && <TaskBoard cwd={(activeCwd ?? selectedSession?.cwd ?? newSessionCwd)!} onClose={() => setTaskBoardOpen(false)} />}
+    {legalTaskBoardOpen && (activeCwd ?? selectedSession?.cwd ?? newSessionCwd) && <LegalTaskBoard cwd={(activeCwd ?? selectedSession?.cwd ?? newSessionCwd)!} onClose={() => setLegalTaskBoardOpen(false)} />}
+    {deadlinePanelOpen && (activeCwd ?? selectedSession?.cwd ?? newSessionCwd) && <DeadlinePanel cwd={(activeCwd ?? selectedSession?.cwd ?? newSessionCwd)!} onClose={() => setDeadlinePanelOpen(false)} />}
     {themeConfigOpen && <ThemeConfig onClose={() => setThemeConfigOpen(false)} />}
     {skillsConfigOpen && (activeCwd ?? selectedSession?.cwd ?? newSessionCwd) && (
       <SkillsConfig cwd={(activeCwd ?? selectedSession?.cwd ?? newSessionCwd)!} onClose={() => setSkillsConfigOpen(false)} />

@@ -58,8 +58,17 @@ export interface Task {
   deliverableType?: DeliverableType;
   deliverablePath?: string;
   relatedFiles?: string[];
+  workflowId?: string;
   createdAt: string;
   completedAt?: string;
+}
+
+export interface WorkflowRun {
+  id: string;
+  workflowId: string;
+  caseId: string;
+  taskIds: string[];
+  startedAt: string;
 }
 
 export type DeadlineType = "court" | "filing" | "client" | "internal";
@@ -112,6 +121,7 @@ export interface MjuStore {
   deadlines: Deadline[];
   schedules: Schedule[];
   deliverables: Deliverable[];
+  workflowRuns: WorkflowRun[];
   createdAt: string;
   updatedAt: string;
 }
@@ -124,12 +134,20 @@ export const DEFAULT_STORE: Omit<MjuStore, "projectName" | "createdAt" | "update
   deadlines: [],
   schedules: [],
   deliverables: [],
+  workflowRuns: [],
 };
 
 export function createEmptyStore(projectName: string): MjuStore {
   const now = new Date().toISOString();
   return {
-    ...DEFAULT_STORE,
+    version: 1,
+    clients: [],
+    cases: [],
+    tasks: [],
+    deadlines: [],
+    schedules: [],
+    deliverables: [],
+    workflowRuns: [],
     projectName,
     createdAt: now,
     updatedAt: now,

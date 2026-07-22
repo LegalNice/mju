@@ -2,7 +2,7 @@
 
 > 本文档是 Mju Agents 的产品和技术规划，供人类开发者和 AI Agent 共同阅读。
 >
-> 当前状态：**第一阶段已完成**，第二阶段未开始。
+> 当前状态：**第一、二阶段已完成；第三阶段的工作流后端已完成，启动器界面待接入。**
 
 ## 目标
 
@@ -131,9 +131,9 @@ interface Deliverable {
 
 ---
 
-## 第二阶段：任务、期限、日程管理 ⬜ 未开始
+## 第二阶段：任务、期限、日程管理 ✅ 已接入
 
-### 2.1 任务 API
+### 2.1 任务 API ✅
 
 - `app/api/tasks/route.ts`
   - GET/POST/PATCH/DELETE，操作 `.mju/store.json` 中的 tasks
@@ -141,29 +141,29 @@ interface Deliverable {
 - `app/api/deadlines/route.ts`：期限增删改查
 - `app/api/schedules/route.ts`：日程增删改查
 
-### 2.2 任务看板增强
+### 2.2 法律任务看板 ✅
 
-- `components/TaskBoard.tsx`
+- `components/LegalTaskBoard.tsx`
   - 任务卡片显示：标题、Agent、截止时间、优先级、交付物类型
   - 支持按 待办/进行中/完成/取消 分组
   - 支持按截止时间排序，逾期任务高亮
   - 任务详情可编辑截止时间、预估工时、实际工时
 
-### 2.3 期限与日程面板
+### 2.3 期限与日程面板 ✅
 
 - `components/DeadlinePanel.tsx`（新）
   - 显示最近 7 天、30 天的期限和日程
   - 逾期标红，即将到期标黄
-- 集成到 AppShell 顶部或侧边栏
+- 已集成到 AppShell 顶部入口；支持 7 / 30 天视图和期限完成标记
 
 ### 验证
 
-- 创建任务时能设置截止时间和交付物类型
-- 期限面板能正确显示开庭日期和举证期限
+- `tsc --noEmit`、`npm run lint`、`git diff --check` 通过
+- 已在桌面和 390px 窄屏实际核验任务、期限与日程面板布局
 
 ---
 
-## 第三阶段：Agent Teams 与工作流 ⬜ 未开始
+## 第三阶段：Agent Teams 与工作流 🟡 后端已完成
 
 ### 3.1 法律 Agent 默认配置
 
@@ -176,18 +176,18 @@ interface Deliverable {
   - 默认操作 `.mju/agents/*.md`
   - 保留可选同步到 Obsidian `.pi/agents/` 供 pi CLI 使用
 
-### 3.2 工作流引擎
+### 3.2 工作流引擎 ✅
 
-- `lib/workflows.ts`
+- `lib/workflows.ts`：内置争议解决、合同审查、专项检索三类工作流；按案件类型筛选，并生成带负责人、优先级、交付物和截止日的任务。
   - `litigation-intake`：收案 → 材料整理 → 法律检索 → 文书起草 → 庭前准备
   - `contract-review`：合同接收 → 法条检索 → 风险分析 → 内部意见 → 对外修订版
   - `legal-research`：检索 → 报告
   - 每个工作流定义阶段序列，每阶段生成对应任务并指派 Agent
 - `app/api/workflows/route.ts`
-  - GET：列出可用工作流
-  - POST `{ caseId, workflowId }`：为案件启动工作流，批量创建任务
+  - GET：列出案件可用工作流及是否已启动
+  - POST `{ caseId, workflowId, action: "preview" | "start" }`：预览或启动工作流；启动会写入任务和运行记录，并拒绝重复启动
 
-### 3.3 工作流 UI
+### 3.3 工作流 UI ⬜ 待接入
 
 - `components/WorkflowLauncher.tsx`（新）
   - 在案件页面显示"启动工作流"按钮
@@ -196,8 +196,8 @@ interface Deliverable {
 
 ### 验证
 
-- 为诉讼案件启动"收案到庭前"工作流，自动生成 5 个任务并指派给不同 Agent
-- 为顾问项目启动"合同审查"工作流，生成检索、分析、意见、修订版 4 个任务
+- 后端测试覆盖预览不落库、诉讼工作流生成 5 项任务、运行记录持久化和重复启动冲突
+- 工作流启动器的前端接入待后续安排
 
 ---
 
