@@ -63,6 +63,11 @@ MJU_NO_OPEN=1 mju               # useful when running as a background service
 - **Subagents**: see [Subagents and task board](./docs/subagents.md).
 - **Open-source privacy boundary**: see [Open-source release and privacy](./docs/open-source-release.md).
 
+## Roadmap & Architecture
+
+- **Roadmap**: see [Mju Agents Legal Workbench Roadmap](./docs/roadmap.md).
+- **Architecture**: see [Mju Agents Architecture](./docs/architecture.md).
+
 ## Development
 
 ```bash
