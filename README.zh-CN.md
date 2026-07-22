@@ -59,6 +59,11 @@ MJU_NO_OPEN=1 mju               # 适用于后台服务或开机自启
 - **Subagent 与看板**：见 [Subagent 与任务看板](./docs/subagents.zh-CN.md)。
 - **开源隐私边界**：见 [开源发布与隐私边界](./docs/open-source-release.zh-CN.md)。
 
+## 规划与架构
+
+- **产品路线图**：见 [Mju Agents 法律工作台重构路线图](./docs/roadmap.md)。
+- **技术架构**：见 [Mju Agents 架构说明](./docs/architecture.md)。
+
 ## 开发
 
 ```bash
