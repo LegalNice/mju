@@ -79,6 +79,10 @@ lib/
   types.ts            shared TypeScript types
   normalize.ts        normalizeToolCalls() — field name mismatch between file format and our types
   worktree.ts         project/worktree resolution and git worktree operations
+  mju-paths.ts        ~/.mju/ layout — Mju metadata lives outside the workspace
+  mju-orchestration.ts system-prompt guidance for auto subagent delegation
+  pi-runtime-paths.ts resolves bundled pi-subagents package paths (cwd-based fallback for Next/Turbopack)
+  subagent-config-tool.ts configure_subagent custom tool — writes project agents to ~/.mju
 
 components/
   AppShell.tsx        layout + URL state + tab management
@@ -131,6 +135,15 @@ Pi stores toolCall blocks as `{type:"toolCall", id, name, arguments}` but `ToolC
 
 ### New session tool preset
 Tool names are passed at session creation (`POST /api/agent/new` → `toolNames[]`). For existing sessions, the active preset is inferred on mount via `get_tools` → `getPresetFromTools()`. When tools are fully disabled (`toolNames = []`), `rpc-manager.ts` passes an empty tool allow-list and forces `agent.state.systemPrompt = ""` after startup/reload/resource discovery.
+
+### pi-subagents must resolve from the project root
+`createRequire(import.meta.url)` fails under Next/Turbopack (the bundled URL points into `.next`), so `getPiSubagentsPaths()` in `lib/pi-runtime-paths.ts` falls back to `process.cwd()`. If the `subagent` tool ever goes missing from `get_tools`, check that resolution first — the main agent cannot delegate without it.
+
+### Mju metadata lives outside the workspace
+Project agent configs are stored in `~/.mju/projects/<encoded-cwd>/agents/` (see `lib/mju-paths.ts`), never inside the Obsidian vault. `rpc-manager.ts` registers that dir through `PI_SUBAGENT_EXTRA_AGENT_DIRS` so pi-subagents discovers them as user-scope agents. Legacy `<cwd>/.mju/agents` and `<cwd>/.pi/agents` are still read (lower precedence) and cleaned on DELETE.
+
+### Auto subagent delegation
+`lib/mju-orchestration.ts` holds the system-prompt section appended via `resourceLoaderOptions.appendSystemPrompt` (only when pi-subagents resolves). It tells the main agent to `subagent` list-then-delegate on substantial work without the user naming an agent. This is prompt-level routing, not a hard router — if a model still does everything itself, strengthen this text rather than adding code.
 
 ### Model defaults for new sessions
 `GET /api/models` returns `defaultModel` read from `~/.pi/agent/settings.json`. `ChatWindow` pre-selects this on mount for new sessions.

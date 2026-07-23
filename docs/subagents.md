@@ -7,7 +7,9 @@ separate Pi CLI installation is not required.
 ## Configuration scope
 
 - User-wide agents: `~/.pi/agent/agents/*.md`
-- Project agents: `<project>/.pi/agents/*.md`
+- Project agents: `~/.mju/projects/<encoded-cwd>/agents/*.md`（默认，存放在工作区之外，Obsidian 库保持纯文档）
+- 兼容读取：旧版 `<project>/.mju/agents/*.md` 和 `<project>/.pi/agents/*.md` 也会被读取，同名时新位置优先
+- 项目级 agent 通过 `PI_SUBAGENT_EXTRA_AGENT_DIRS` 注册给 pi-subagents，以 user 级身份参与委派
 - Project definitions take precedence when names collide.
 - `.pi/settings.json` registers the package only; it does not contain API keys
   or private agent definitions.

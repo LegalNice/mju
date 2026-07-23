@@ -1,7 +1,8 @@
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
-import { dirname, join, parse } from "node:path";
+import { join, parse } from "node:path";
 import { defineTool, getAgentDir } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { mjuProjectAgentsDir } from "./mju-paths";
 
 type AgentScope = "user" | "project";
 
@@ -45,14 +46,9 @@ const PARAMS = Type.Object({
 });
 
 function projectAgentsDir(cwd: string): string {
-  let current = cwd;
-  while (true) {
-    const candidate = join(current, ".pi", "agents");
-    if (existsSync(candidate)) return candidate;
-    const parent = dirname(current);
-    if (parent === current) return join(cwd, ".pi", "agents");
-    current = parent;
-  }
+  // Mju keeps project-level agent definitions outside the workspace so the
+  // Obsidian vault stays a pure document archive.
+  return mjuProjectAgentsDir(cwd);
 }
 
 function yamlValue(value: string): string {

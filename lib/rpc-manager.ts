@@ -8,6 +8,26 @@ import type { AgentSessionLike, ExtensionUiContextLike, ToolInfo } from "./pi-ty
 import type { ExtensionUiRequest, ExtensionUiResponse, ExtensionWidgetItem } from "./types";
 import { createSubagentConfigTool } from "./subagent-config-tool";
 import { getPiSubagentsPaths } from "./pi-runtime-paths";
+import { mjuProjectAgentsDir } from "./mju-paths";
+import { MJU_ORCHESTRATION_PROMPT } from "./mju-orchestration";
+import { delimiter as pathDelimiter } from "node:path";
+
+/**
+ * pi-subagents discovers extra user-scope agent dirs through
+ * PI_SUBAGENT_EXTRA_AGENT_DIRS (PATH-style). Register the current project's
+ * Mju agents dir so project agents stored outside the workspace are visible
+ * to the delegation tool. Accumulates across cwds; entries are read as
+ * user-scope, matching Mju's "one legal team across cases" model.
+ */
+function registerMjuAgentsDir(cwd: string): void {
+  const dir = mjuProjectAgentsDir(cwd);
+  const existing = (process.env.PI_SUBAGENT_EXTRA_AGENT_DIRS ?? "")
+    .split(pathDelimiter)
+    .filter(Boolean);
+  if (!existing.includes(dir)) {
+    process.env.PI_SUBAGENT_EXTRA_AGENT_DIRS = [...existing, dir].join(pathDelimiter);
+  }
+}
 
 // ============================================================================
 // Types
@@ -999,6 +1019,7 @@ export async function startRpcSession(
 
     // Build services first so extension-registered providers are available
     // before the SDK restores the saved model from the session file.
+    registerMjuAgentsDir(cwd);
     const subagentPaths = getPiSubagentsPaths();
     const subagentResources = subagentPaths
       ? {
@@ -1007,7 +1028,12 @@ export async function startRpcSession(
           additionalPromptTemplatePaths: [subagentPaths.prompts],
         }
       : undefined;
-    const services = await createAgentSessionServices({ cwd, agentDir, ...(subagentResources ? { resourceLoaderOptions: subagentResources } : {}) });
+    const resourceLoaderOptions = {
+      ...(subagentResources ?? {}),
+      // Only teach delegation when the subagent tool can actually be loaded.
+      ...(subagentPaths ? { appendSystemPrompt: [MJU_ORCHESTRATION_PROMPT] } : {}),
+    };
+    const services = await createAgentSessionServices({ cwd, agentDir, resourceLoaderOptions });
     let reloadAfterSubagentSave: () => Promise<void> = async () => {};
     const configureSubagentTool = createSubagentConfigTool(cwd, () => reloadAfterSubagentSave());
     const { session: inner } = await createAgentSessionFromServices({
