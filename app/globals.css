@@ -19,76 +19,56 @@
 }
 
 :root {
-  --bg: #f4ecd9;
-  --bg-panel: #e9ddc6;
-  --bg-hover: #dfcfb4;
-  --bg-selected: #d7c1a1;
-  --border: #ccb89a;
-  --text: #302522;
-  --text-muted: #756159;
-  --text-dim: #a38d7b;
-  --accent: #8e3045;
-  --accent-hover: #6f2033;
-  --user-bg: #ead9bd;
-  --assistant-bg: #f4ecd9;
-  --tool-bg: #e8dcc7;
-  --bg-subtle: rgba(81,52,35,0.06);
-  --glow: rgba(142,48,69,0.15);
+  --bg: #ffffff;
+  --bg-panel: #f5f5f4;
+  --bg-hover: #ececea;
+  --bg-selected: #e4e4e2;
+  --border: #e5e5e3;
+  --text: #111111;
+  --text-muted: #6b6b6b;
+  --text-dim: #a8a8a8;
+  --accent: #e30613;
+  --accent-hover: #b30510;
+  --user-bg: #f5f5f4;
+  --assistant-bg: #ffffff;
+  --tool-bg: #fafafa;
+  --bg-subtle: rgba(17,17,17,0.04);
+  --glow: rgba(227,6,19,0.08);
 }
 
 html.dark {
-  --bg: #1e1719;
-  --bg-panel: #2a2022;
-  --bg-hover: #39292b;
-  --bg-selected: #493036;
-  --border: #594047;
-  --text: #f1e7d4;
-  --text-muted: #bca896;
-  --text-dim: #82716a;
-  --accent: #d2a15d;
-  --accent-hover: #e2b976;
-  --user-bg: #3b292c;
-  --assistant-bg: #1e1719;
-  --tool-bg: #2a2022;
-  --bg-subtle: rgba(255,226,184,0.06);
-  --glow: rgba(210,161,93,0.15);
-}
-
-html[data-theme="atelier"] {
-  --bg: #f4ead8; --bg-panel: #e7d7bd; --bg-hover: #dbc5a4; --bg-selected: #ceb18d;
-  --border: #b99b76; --text: #30201f; --text-muted: #735b54; --text-dim: #a78873;
-  --accent: #7f233c; --accent-hover: #5d182c; --user-bg: #e5cfad; --assistant-bg: #f4ead8; --tool-bg: #e9dac0; --bg-subtle: rgba(93,48,38,.07); --glow: rgba(127,35,60,.15);
-}
-html[data-theme="kimi"] {
-  --bg: #ffffff; --bg-panel: #f8f9fb; --bg-hover: #f1f3f6; --bg-selected: #eaf2ff;
-  --border: #e3e7ee; --text: #202124; --text-muted: #6f7782; --text-dim: #a5adb8;
-  --accent: #1677ff; --accent-hover: #0f63d7; --user-bg: #edf5ff; --assistant-bg: #ffffff; --tool-bg: #f8fafc; --bg-subtle: rgba(22,119,255,.04); --glow: rgba(22,119,255,.14);
-}
-html[data-theme="terminal"] {
-  --bg: #071111; --bg-panel: #0d1c1c; --bg-hover: #132828; --bg-selected: #193838;
-  --border: #244440; --text: #d9f1d2; --text-muted: #8bb19c; --text-dim: #55796e;
-  --accent: #b9f33b; --accent-hover: #d4ff72; --user-bg: #102b28; --assistant-bg: #071111; --tool-bg: #0d1c1c; --bg-subtle: rgba(185,243,59,.06); --glow: rgba(185,243,59,.16);
+  --bg: #111111;
+  --bg-panel: #1a1a1a;
+  --bg-hover: #242424;
+  --bg-selected: #2e2e2e;
+  --border: #2e2e2e;
+  --text: #f5f5f4;
+  --text-muted: #a3a3a3;
+  --text-dim: #5c5c5c;
+  --accent: #ff3b30;
+  --accent-hover: #ff6159;
+  --user-bg: #1a1a1a;
+  --assistant-bg: #111111;
+  --tool-bg: #161616;
+  --bg-subtle: rgba(245,245,244,0.05);
+  --glow: rgba(255,59,48,0.12);
 }
 
 .chat-composer {
   border: 1px solid var(--border) !important;
-  border-radius: 20px !important;
-  background: color-mix(in srgb, var(--bg-panel) 28%, var(--bg)) !important;
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--border) 35%, transparent), 0 10px 28px -12px rgba(15,23,42,.22) !important;
+  border-radius: 2px !important;
+  background: var(--bg) !important;
+  box-shadow: none !important;
 }
 .chat-composer:focus-within {
   border-color: var(--accent) !important;
-  box-shadow: 0 0 0 3px var(--glow), 0 10px 28px -12px rgba(15,23,42,.22) !important;
+  box-shadow: none !important;
 }
 .chat-composer textarea,
 .chat-composer textarea:focus {
   border: none !important;
   box-shadow: none !important;
   outline: none !important;
-}
-html[data-theme="kimi"] .chat-composer {
-  border-color: #e1e7f0 !important;
-  box-shadow: 0 10px 30px rgba(25, 71, 130, .10) !important;
 }
 .workspace-chip {
   width: fit-content;
@@ -99,15 +79,11 @@ html[data-theme="kimi"] .chat-composer {
   margin: 0 auto 12px;
   padding: 6px 11px;
   border: 1px solid var(--border);
-  border-radius: 9px;
-  background: color-mix(in srgb, var(--bg-panel) 72%, var(--bg));
+  border-radius: 2px;
+  background: var(--bg);
   color: var(--text-muted);
-  font-size: 12px;
-}
-html[data-theme="kimi"] .workspace-chip {
-  background: #fbfcfe;
-  border-color: #e5eaf1;
-  color: #687381;
+  font-size: 11px;
+  letter-spacing: .04em;
 }
 
 /* Theme toggle: circular wipe via View Transitions API.
@@ -134,11 +110,8 @@ html, body {
   margin: 0;
   padding: 0;
   background-color: var(--bg);
-  background-image:
-    radial-gradient(circle at 15% 0%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 30%),
-    repeating-linear-gradient(0deg, transparent 0, transparent 3px, color-mix(in srgb, var(--text) 2%, transparent) 4px, transparent 5px);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
   font-size: 14px;
   overscroll-behavior: none;
 }
@@ -146,23 +119,14 @@ html, body {
 button, input, textarea, select { font-family: inherit; }
 button { -webkit-tap-highlight-color: transparent; }
 input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--text-muted) 72%, transparent); }
-input:focus, textarea:focus, select:focus { border-color: var(--accent) !important; box-shadow: 0 0 0 3px var(--glow); }
+input:focus, textarea:focus, select:focus { border-color: var(--accent) !important; box-shadow: none; }
 
 .sidebar-container {
-  box-shadow: 10px 0 32px color-mix(in srgb, var(--text) 6%, transparent);
-  background-image: linear-gradient(180deg, color-mix(in srgb, var(--accent) 4%, transparent), transparent 22%);
+  border-right: 1px solid var(--border);
 }
 .app-topbar {
-  box-shadow: 0 2px 18px color-mix(in srgb, var(--text) 5%, transparent);
-  background-image: linear-gradient(90deg, color-mix(in srgb, var(--accent) 5%, transparent), transparent 42%);
+  border-bottom: 1px solid var(--border);
 }
-.app-main {
-  background-image:
-    radial-gradient(color-mix(in srgb, var(--text) 10%, transparent) 0.7px, transparent 0.8px),
-    radial-gradient(ellipse at 50% 12%, color-mix(in srgb, var(--accent) 6%, transparent), transparent 52%);
-  background-size: 12px 12px, auto;
-}
-.app-main h1, .app-main h2, .app-main h3 { font-family: Georgia, "Songti SC", "STSong", serif; }
 
 body {
   height: 100dvh;
@@ -239,7 +203,7 @@ pre, code {
 .markdown-body a:hover { text-decoration-color: var(--accent); }
 .markdown-body .markdown-inline-code {
   background: var(--bg-subtle);
-  border-radius: 5px;
+  border-radius: 2px;
   padding: 1px 5px;
   color: var(--text);
   font-family: var(--font-mono);
@@ -266,7 +230,7 @@ pre, code {
   height: 14px;
   margin: 0;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 2px;
   background: var(--bg);
   display: inline-grid;
   place-content: center;
@@ -287,7 +251,7 @@ pre, code {
 }
 .markdown-body blockquote {
   border-left: 3px solid color-mix(in srgb, var(--border) 75%, var(--text-muted));
-  border-radius: 0 6px 6px 0;
+  border-radius: 0;
   margin: 6px 0;
   padding: 6px 11px;
   background: var(--bg-subtle);
@@ -299,7 +263,7 @@ pre, code {
   overflow-x: auto;
   overflow-y: hidden;
   border: 1px solid var(--border);
-  border-radius: 7px;
+  border-radius: 2px;
 }
 .markdown-body table {
   border-collapse: separate;
@@ -417,7 +381,7 @@ pre, code {
   padding: 7px 8px;
   overflow: auto;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 2px;
   background: var(--bg-panel);
   font-family: var(--font-mono);
   font-size: 11px;
@@ -435,10 +399,9 @@ pre, code {
   position: relative;
   margin: 6px 0;
   border: 1px solid var(--border);
-  border-radius: 7px;
+  border-radius: 2px;
   overflow: hidden;
   background: var(--bg);
-  box-shadow: 0 1px 0 color-mix(in srgb, var(--border) 42%, transparent);
 }
 .markdown-code-header {
   padding: 5px 10px;
@@ -463,7 +426,7 @@ pre, code {
 }
 .markdown-code-action {
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: 2px;
   padding: 2px 7px;
   background: var(--bg);
   color: var(--text-muted);
@@ -512,7 +475,7 @@ pre, code {
 .markdown-file-preview pre {
   background: var(--bg-panel);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 2px;
   padding: 12px 16px;
   overflow-x: auto;
   font-family: var(--font-mono);
@@ -524,7 +487,7 @@ pre, code {
   font-size: 0.9em;
   background: var(--bg-panel);
   padding: 1px 5px;
-  border-radius: 3px;
+  border-radius: 2px;
 }
 .markdown-file-preview pre code {
   background: none;
@@ -571,6 +534,12 @@ span.linenumber {
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
+}
+
+/* Board 新任务卡片入场（components/CaseBoardView.tsx） */
+@keyframes mju-card-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes notice-shelf-in {
@@ -637,8 +606,8 @@ span.linenumber {
     transition: width 0.2s ease, min-width 0.2s ease;
   }
   .sidebar-container.sidebar-open {
-    width: 260px;
-    min-width: 260px;
+    width: 280px;
+    min-width: 280px;
   }
   .sidebar-container.sidebar-closed {
     width: 0;
@@ -647,8 +616,8 @@ span.linenumber {
   }
   /* keep inner content at fixed width so it doesn't reflow during animation */
   .sidebar-container > * {
-    width: 260px;
-    min-width: 260px;
+    width: 280px;
+    min-width: 280px;
   }
 }
 

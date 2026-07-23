@@ -291,14 +291,12 @@ interface Deliverable {
 
 ## 当前设计系统
 
-Mju 采用 Kimi 风格暖调极简设计：
+Mju 采用瑞士国际主义平面风格（Swiss / International Typographic Style）：
 
-- 背景：暖白 `#fdfcfb`
-- 次背景：浅暖灰 `#f7f5f2`
-- 主色：暖橙红 `#d45d3a`
-- 边框：极浅 `#e8e4df`
-- 圆角：8-20px 自然分层
-- 阴影：轻量，如浮在纸上
-- 动画：入场淡入 + 卡片依次滑入
+- 白场（paper）/ 黑场（night）双主题，全场唯一装饰色为信号红 `#e30613`
+- 新怪诞字体栈（Helvetica Neue / 苹方），层级靠字重与字号，无衬线
+- 分隔一律 1px 细线；圆角统一 2px；无渐变、无纹理、无装饰阴影（仅模态浮层保留一档）
+- 微型标签排版：10-11px 大写、letterSpacing .08-.12em、fontWeight 700
+- 统计数字使用 tabular-nums
 
-共享设计系统位于 `lib/design-system.ts`。
+共享设计系统位于 `lib/design-system.ts`（token 经 `app/globals.css` 的 CSS 变量解析，组件自动跟随主题）。

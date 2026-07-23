@@ -11,9 +11,6 @@ import { ModelsConfig } from "./ModelsConfig";
 import { SkillsConfig } from "./SkillsConfig";
 import { PluginsConfig } from "./PluginsConfig";
 import { SubagentsConfig } from "./SubagentsConfig";
-import { LegalTaskBoard } from "./LegalTaskBoard";
-import { CaseBoard } from "./CaseBoard";
-import { DeadlinePanel } from "./DeadlinePanel";
 import { ThemeConfig } from "./ThemeConfig";
 import { BranchNavigator } from "./BranchNavigator";
 import { useTheme } from "@/hooks/useTheme";
@@ -43,9 +40,6 @@ export function AppShell() {
   const [skillsConfigOpen, setSkillsConfigOpen] = useState(false);
   const [pluginsConfigOpen, setPluginsConfigOpen] = useState(false);
   const [subagentsConfigOpen, setSubagentsConfigOpen] = useState(false);
-  const [legalTaskBoardOpen, setLegalTaskBoardOpen] = useState(false);
-  const [deadlinePanelOpen, setDeadlinePanelOpen] = useState(false);
-  const [caseBoardOpen, setCaseBoardOpen] = useState(false);
   const [themeConfigOpen, setThemeConfigOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarReady, setMobileSidebarReady] = useState(false);
@@ -190,7 +184,7 @@ export function AppShell() {
     setBranchActiveLeafId(null);
     setSystemPrompt(null);
     setActiveTopPanel(null);
-    router.replace("/", { scroll: false });
+    router.replace("/sessions", { scroll: false });
   }, [router, selectedSession]);
 
   // Update browser tab title when workspace changes
@@ -228,7 +222,7 @@ export function AppShell() {
     setSystemPrompt(null);
     setActiveTopPanel(null);
     if (isMobile) setSidebarOpen(false);
-    router.replace("/", { scroll: false });
+    router.replace("/sessions", { scroll: false });
   }, [router, isMobile]);
 
   // Global keyboard shortcuts (handles Esc, Ctrl+Alt+N etc.)
@@ -293,7 +287,7 @@ export function AppShell() {
       setBranchActiveLeafId(null);
       setSystemPrompt(null);
       setActiveTopPanel(null);
-      router.replace("/", { scroll: false });
+      router.replace("/sessions", { scroll: false });
     }
   }, [selectedSession, router]);
 
@@ -432,7 +426,7 @@ export function AppShell() {
             style={{
               minWidth: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
               height: 30, padding: 0, background: "transparent", border: "none",
-              borderRadius: 9, color: "var(--text-muted)", cursor: disabled ? "default" : "pointer",
+              borderRadius: 2, color: "var(--text-muted)", cursor: disabled ? "default" : "pointer",
               fontSize: 11, opacity: disabled ? 0.35 : 1,
               transition: "background 0.12s, color 0.12s",
             }}
@@ -451,61 +445,16 @@ export function AppShell() {
     <>
     <style>{`
       @keyframes session-info-pop {
-        0% {
-          opacity: 0;
-          transform: translateY(-24px);
-          filter: blur(6px);
-          box-shadow: 0 2px 8px rgba(0,0,0,0);
-        }
-        55% {
-          opacity: 1;
-          transform: translateY(0);
-          filter: blur(0);
-          background: color-mix(in srgb, var(--accent) 8%, var(--bg-panel));
-          box-shadow: 0 18px 44px rgba(37,99,235,0.16);
-        }
-        100% {
-          opacity: 1;
-          transform: translateY(0);
-          filter: blur(0);
-          background: var(--bg-panel);
-          box-shadow: 0 10px 28px rgba(0,0,0,0.10);
-        }
-      }
-      @keyframes session-info-light-wash {
-        0% {
-          opacity: 0;
-          transform: translateX(-110%) skewX(-16deg);
-        }
-        24% {
-          opacity: 0.42;
-        }
-        100% {
-          opacity: 0;
-          transform: translateX(115%) skewX(-16deg);
-        }
+        0% { opacity: 0; transform: translateY(-6px); }
+        100% { opacity: 1; transform: translateY(0); }
       }
       .session-info-popover {
-        position: relative;
-        overflow: hidden;
         transform-origin: top right;
-        animation: session-info-pop 360ms ease-out both;
-        will-change: transform, opacity, filter, background, box-shadow;
-      }
-      .session-info-popover::after {
-        content: "";
-        position: absolute;
-        top: 0;
-        bottom: 0;
-        left: 0;
-        width: 44%;
-        pointer-events: none;
-        background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 24%, transparent), transparent);
-        animation: session-info-light-wash 620ms ease-out both;
+        animation: session-info-pop 160ms ease-out both;
+        will-change: transform, opacity;
       }
       @media (prefers-reduced-motion: reduce) {
-        .session-info-popover,
-        .session-info-popover::after {
+        .session-info-popover {
           animation: none;
         }
       }
@@ -554,26 +503,31 @@ export function AppShell() {
       {/* Center: chat */}
       <div className="app-main" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
         {/* Top bar with sidebar toggle */}
-        <div ref={topBarRef} className="app-topbar" style={{ display: "flex", alignItems: "center", flexShrink: 0, borderBottom: "1px solid var(--border)", height: 36, background: "var(--bg-panel)" }}>
+        <div ref={topBarRef} className="app-topbar" style={{ display: "flex", alignItems: "center", flexShrink: 0, borderBottom: "1px solid var(--border)", height: 48, background: "var(--bg-panel)" }}>
+          <div style={{ display: "flex", alignItems: "center", height: "100%", padding: "0 14px", flexShrink: 0, borderRight: "1px solid var(--border)", userSelect: "none" }}>
+            <span style={{ fontWeight: 700, fontSize: 14, letterSpacing: "-0.01em", color: "var(--text)", whiteSpace: "nowrap" }}>
+              MJU<span style={{ color: "var(--accent)" }}>—</span>Agents
+            </span>
+          </div>
           <button
             onClick={handleSidebarToggle}
             title={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
             aria-label={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
             style={{
               display: "flex", alignItems: "center", justifyContent: "center",
-              width: 36, height: 36, padding: 0,
-              background: "none", border: "none", borderRight: "1px solid var(--border)",
+              height: "100%", padding: "0 12px",
+              background: "none", border: "none",
               color: "var(--text-muted)", cursor: "pointer", flexShrink: 0, transition: "color 0.12s",
             }}
             onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
             onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
           >
             {sidebarOpen ? (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="9" y1="3" x2="9" y2="21" />
               </svg>
             ) : (
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
               </svg>
             )}
@@ -588,15 +542,15 @@ export function AppShell() {
             aria-pressed={isDark}
             style={{
               display: "flex", alignItems: "center", justifyContent: "center",
-              width: 36, height: 36, padding: 0,
-              background: "none", border: "none", borderRight: "1px solid var(--border)",
+              height: "100%", padding: "0 12px",
+              background: "none", border: "none",
               color: "var(--text-muted)", cursor: "pointer", flexShrink: 0, transition: "color 0.12s",
             }}
             onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
             onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
           >
             {isDark ? (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="5" />
                 <line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" />
                 <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
@@ -604,7 +558,7 @@ export function AppShell() {
                 <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
               </svg>
             ) : (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
               </svg>
             )}
@@ -619,34 +573,33 @@ export function AppShell() {
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: 6,
+                  gap: 5,
                   height: "100%",
                   padding: "0 12px",
                   background: "none",
                   border: "none",
-                  borderTop: "2px solid transparent",
-                  borderRight: "1px solid var(--border)",
                   color: selectedSession ? "var(--text-muted)" : "var(--text-dim)",
                   cursor: selectedSession ? "pointer" : "not-allowed",
                   opacity: selectedSession ? 1 : 0.45,
                   flexShrink: 0,
-                  fontSize: 11,
+                  fontSize: 10,
+                  fontWeight: 700,
+                  letterSpacing: "0.1em",
+                  textTransform: "uppercase",
                   whiteSpace: "nowrap",
-                  transition: "color 0.1s, background 0.1s, opacity 0.1s",
+                  transition: "color 0.1s, opacity 0.1s",
                 }}
                 onMouseEnter={(e) => {
                   if (!selectedSession) return;
                   e.currentTarget.style.color = "var(--text)";
-                  e.currentTarget.style.background = "var(--bg-hover)";
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.color = selectedSession ? "var(--text-muted)" : "var(--text-dim)";
-                  e.currentTarget.style.background = "none";
                 }}
               >
                 <svg
-                  width="12"
-                  height="12"
+                  width="11"
+                  height="11"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
@@ -682,62 +635,29 @@ export function AppShell() {
                 aria-label="System prompt"
                 aria-pressed={activeTopPanel === "system"}
                 style={{
-                  display: "flex", alignItems: "center", gap: 6,
+                  display: "flex", alignItems: "center", gap: 5,
                   height: "100%", padding: "0 12px",
-                  background: activeTopPanel === "system" ? "var(--bg-selected)" : "none",
+                  background: "none",
                   border: "none",
-                  borderTop: activeTopPanel === "system" ? "2px solid var(--accent)" : "2px solid transparent",
-                  borderRight: "1px solid var(--border)",
                   cursor: "pointer",
                   color: activeTopPanel === "system" ? "var(--text)" : "var(--text-muted)",
-                  fontSize: 11, whiteSpace: "nowrap", transition: "color 0.1s, background 0.1s",
+                  fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase",
+                  whiteSpace: "nowrap", transition: "color 0.1s",
+                  textDecoration: activeTopPanel === "system" ? "underline" : "none",
+                  textDecorationColor: "var(--accent)",
+                  textDecorationThickness: 2,
+                  textUnderlineOffset: 5,
                 }}
                 onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
                 onMouseLeave={(e) => { e.currentTarget.style.color = activeTopPanel === "system" ? "var(--text)" : "var(--text-muted)"; }}
               >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: systemPrompt ? "var(--accent)" : "var(--text-dim)", flexShrink: 0 }}>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: systemPrompt ? "var(--accent)" : "var(--text-dim)", flexShrink: 0 }}>
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                   <polyline points="14 2 14 8 20 8" />
                   <line x1="8" y1="13" x2="16" y2="13" />
                   <line x1="8" y1="17" x2="13" y2="17" />
                 </svg>
                 {!isMobile && <span>System</span>}
-              </button>
-              <button
-                onClick={() => setCaseBoardOpen(true)}
-                disabled={!activeCwd && !selectedSession?.cwd && !newSessionCwd}
-                title="案件与项目"
-                aria-label="案件与项目"
-                style={{ display: "flex", alignItems: "center", gap: 6, height: "100%", padding: "0 12px", background: "none", border: "none", borderTop: "2px solid transparent", borderRight: "1px solid var(--border)", color: (activeCwd || selectedSession?.cwd || newSessionCwd) ? "var(--text-muted)" : "var(--text-dim)", cursor: (activeCwd || selectedSession?.cwd || newSessionCwd) ? "pointer" : "not-allowed", opacity: (activeCwd || selectedSession?.cwd || newSessionCwd) ? 1 : .45, flexShrink: 0, fontSize: 11, whiteSpace: "nowrap" }}
-                onMouseEnter={(e) => { if (activeCwd || selectedSession?.cwd || newSessionCwd) { e.currentTarget.style.color = "var(--text)"; e.currentTarget.style.background = "var(--bg-hover)"; } }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = (activeCwd || selectedSession?.cwd || newSessionCwd) ? "var(--text-muted)" : "var(--text-dim)"; e.currentTarget.style.background = "none"; }}
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></svg>
-                {!isMobile && <span>Cases</span>}
-              </button>
-              <button
-                onClick={() => setLegalTaskBoardOpen(true)}
-                disabled={!activeCwd && !selectedSession?.cwd && !newSessionCwd}
-                title="法律任务"
-                aria-label="法律任务"
-                style={{ display: "flex", alignItems: "center", gap: 6, height: "100%", padding: "0 12px", background: "none", border: "none", borderTop: "2px solid transparent", borderRight: "1px solid var(--border)", color: (activeCwd || selectedSession?.cwd || newSessionCwd) ? "var(--text-muted)" : "var(--text-dim)", cursor: (activeCwd || selectedSession?.cwd || newSessionCwd) ? "pointer" : "not-allowed", opacity: (activeCwd || selectedSession?.cwd || newSessionCwd) ? 1 : .45, flexShrink: 0, fontSize: 11, whiteSpace: "nowrap" }}
-                onMouseEnter={(e) => { if (activeCwd || selectedSession?.cwd || newSessionCwd) { e.currentTarget.style.color = "var(--text)"; e.currentTarget.style.background = "var(--bg-hover)"; } }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = (activeCwd || selectedSession?.cwd || newSessionCwd) ? "var(--text-muted)" : "var(--text-dim)"; e.currentTarget.style.background = "none"; }}
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="5" height="16" rx="1" /><rect x="10" y="4" width="5" height="10" rx="1" /><rect x="17" y="4" width="4" height="7" rx="1" /></svg>
-                {!isMobile && <span>Tasks</span>}
-              </button>
-              <button
-                onClick={() => setDeadlinePanelOpen(true)}
-                disabled={!activeCwd && !selectedSession?.cwd && !newSessionCwd}
-                title="期限与日程"
-                aria-label="期限与日程"
-                style={{ display: "flex", alignItems: "center", gap: 6, height: "100%", padding: "0 12px", background: "none", border: "none", borderTop: "2px solid transparent", borderRight: "1px solid var(--border)", color: (activeCwd || selectedSession?.cwd || newSessionCwd) ? "var(--text-muted)" : "var(--text-dim)", cursor: (activeCwd || selectedSession?.cwd || newSessionCwd) ? "pointer" : "not-allowed", opacity: (activeCwd || selectedSession?.cwd || newSessionCwd) ? 1 : .45, flexShrink: 0, fontSize: 11, whiteSpace: "nowrap" }}
-                onMouseEnter={(e) => { if (activeCwd || selectedSession?.cwd || newSessionCwd) { e.currentTarget.style.color = "var(--text)"; e.currentTarget.style.background = "var(--bg-hover)"; } }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = (activeCwd || selectedSession?.cwd || newSessionCwd) ? "var(--text-muted)" : "var(--text-dim)"; e.currentTarget.style.background = "none"; }}
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="17" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
-                {!isMobile && <span>Dates</span>}
               </button>
             </div>
           )}
@@ -782,15 +702,14 @@ export function AppShell() {
                   marginLeft: "auto",
                   display: "flex", alignItems: "center", gap: 10,
                   paddingLeft: 12,
-                  paddingRight: rightPanelOpen ? 12 : 48,
+                  paddingRight: rightPanelOpen ? 12 : 56,
                   height: "100%",
-                  background: activeTopPanel === "session" ? "var(--bg-selected)" : "none",
+                  background: "none",
                   border: "none",
-                  borderTop: activeTopPanel === "session" ? "2px solid var(--accent)" : "2px solid transparent",
                   fontSize: 11, color: "var(--text-muted)",
                   whiteSpace: "nowrap", cursor: "pointer",
                   fontVariantNumeric: "tabular-nums",
-                  transition: "color 0.1s, background 0.1s",
+                  transition: "color 0.1s",
                 }}
                 onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
                 onMouseLeave={(e) => { e.currentTarget.style.color = activeTopPanel === "session" ? "var(--text)" : "var(--text-muted)"; }}
@@ -961,7 +880,7 @@ export function AppShell() {
                             color: copied ? "var(--accent)" : "var(--text-dim)",
                             background: "transparent",
                             border: "1px solid var(--border)",
-                            borderRadius: 4,
+                            borderRadius: 2,
                             cursor: "pointer",
                             flex: "0 0 auto",
                             transition: "color 0.12s, border-color 0.12s, background 0.12s",
@@ -1134,28 +1053,20 @@ export function AppShell() {
       style={{
         position: "fixed", top: 0, right: 0, zIndex: 300,
         display: "flex", alignItems: "center", justifyContent: "center",
-        width: 36, height: 36, padding: 0,
-        background: "var(--bg-panel)", border: "none", borderLeft: "1px solid var(--border)", borderBottom: "1px solid var(--border)",
+        width: 48, height: 48, padding: 0,
+        background: "transparent", border: "none",
         color: rightPanelOpen ? "var(--text)" : "var(--text-muted)",
         cursor: "pointer", transition: "color 0.12s",
       }}
       onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
       onMouseLeave={(e) => { e.currentTarget.style.color = rightPanelOpen ? "var(--text)" : "var(--text-muted)"; }}
     >
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="15" y1="3" x2="15" y2="21" />
       </svg>
     </button>
     {modelsConfigOpen && <ModelsConfig onModelsChanged={() => setModelsRefreshKey((k) => k + 1)} onClose={() => { setModelsConfigOpen(false); setModelsRefreshKey((k) => k + 1); }} />}
     {subagentsConfigOpen && <SubagentsConfig cwd={activeCwd ?? selectedSession?.cwd ?? newSessionCwd} onClose={() => setSubagentsConfigOpen(false)} />}
-    {caseBoardOpen && (activeCwd ?? selectedSession?.cwd ?? newSessionCwd) && (
-      <CaseBoard
-        cwd={(activeCwd ?? selectedSession?.cwd ?? newSessionCwd)!}
-        onClose={() => setCaseBoardOpen(false)}
-      />
-    )}
-    {legalTaskBoardOpen && (activeCwd ?? selectedSession?.cwd ?? newSessionCwd) && <LegalTaskBoard cwd={(activeCwd ?? selectedSession?.cwd ?? newSessionCwd)!} onClose={() => setLegalTaskBoardOpen(false)} />}
-    {deadlinePanelOpen && (activeCwd ?? selectedSession?.cwd ?? newSessionCwd) && <DeadlinePanel cwd={(activeCwd ?? selectedSession?.cwd ?? newSessionCwd)!} onClose={() => setDeadlinePanelOpen(false)} />}
     {themeConfigOpen && <ThemeConfig onClose={() => setThemeConfigOpen(false)} />}
     {skillsConfigOpen && (activeCwd ?? selectedSession?.cwd ?? newSessionCwd) && (
       <SkillsConfig cwd={(activeCwd ?? selectedSession?.cwd ?? newSessionCwd)!} onClose={() => setSkillsConfigOpen(false)} />

@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>Mju—Agents · 流程稿：进入页 → 看板 → 任务子页</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, "PingFang SC", sans-serif;
+    color: #111; background: #fff; font-size: 14px; line-height: 1.55;
+    -webkit-font-smoothing: antialiased; overflow: hidden;
+  }
+  .micro { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+
+  /* ============ masthead（初始隐藏，进入 board 后降下） ============ */
+  header {
+    position: fixed; top: 0; left: 0; right: 0; height: 52px; z-index: 20;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 24px; border-bottom: 1px solid #e5e5e3; background: #fff;
+    transform: translateY(-100%); transition: transform .45s cubic-bezier(.16,1,.3,1) .25s;
+  }
+  body.board header, body.task header { transform: translateY(0); }
+  .wordmark { font-weight: 700; font-size: 15px; }
+  .wordmark i { font-style: normal; color: #e30613; }
+  nav { display: flex; gap: 24px; }
+  nav a { color: #6b6b6b; cursor: pointer; }
+  nav a:hover, nav a.on { color: #111; }
+  nav a.on { text-decoration: underline; text-decoration-color: #e30613; text-underline-offset: 5px; text-decoration-thickness: 2px; }
+
+  /* ============ 进入页 ============ */
+  .entry {
+    position: fixed; inset: 0; z-index: 30; background: #fff;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 24px; transition: opacity .4s ease, transform .5s cubic-bezier(.16,1,.3,1);
+  }
+  body.board .entry, body.task .entry { opacity: 0; transform: translateY(-24px); pointer-events: none; }
+  .hero-mark { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; }
+  .hero-mark i { font-style: normal; color: #e30613; }
+  .hero-sub { color: #a8a8a8; margin-top: 10px; }
+  .entry-composer {
+    width: min(640px, 92vw); margin-top: 36px; border: 1px solid #e5e5e3; border-radius: 2px; padding: 16px;
+    transition: border-color .15s;
+  }
+  .entry-composer:focus-within { border-color: #e30613; }
+  .entry-composer textarea {
+    width: 100%; border: none; outline: none; resize: none; font: inherit; background: transparent; min-height: 44px;
+  }
+  .entry-bar { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+  .entry-bar .meta { color: #6b6b6b; font-size: 11px; letter-spacing: .06em; }
+  .send { width: 28px; height: 28px; border: none; border-radius: 2px; background: #e30613; color: #fff; font-size: 15px; cursor: pointer; }
+  .send:hover { background: #b30510; }
+  .hint { margin-top: 20px; color: #a8a8a8; font-size: 11px; }
+
+  /* ============ 看板 ============ */
+  .workspace {
+    position: fixed; inset: 52px 0 0 0; display: flex; min-height: 0;
+    opacity: 0; transition: opacity .45s ease .45s;
+  }
+  body.board .workspace, body.task .workspace { opacity: 1; }
+  .board { flex: 1; overflow-y: auto; padding: 28px; }
+  .board-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 22px; }
+  .board-head h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
+  .cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .col h2 { color: #a8a8a8; padding-bottom: 8px; border-bottom: 1px solid #e5e5e3; display: flex; justify-content: space-between; }
+  .card { border: 1px solid #e5e5e3; border-radius: 2px; padding: 12px 14px; margin-top: 10px; cursor: pointer; transition: border-color .12s; background: #fff; }
+  .card:hover { border-color: #111; }
+  .card-title { font-weight: 600; font-size: 13px; }
+  .card-meta { color: #a8a8a8; font-size: 11px; margin-top: 5px; display: flex; justify-content: space-between; align-items: center; }
+  .tag { font-size: 10px; font-weight: 700; letter-spacing: .06em; padding: 2px 6px; border-radius: 2px; }
+  .tag-grey { background: #f5f5f4; color: #6b6b6b; }
+  .tag-red { background: rgba(227,6,19,.08); color: #e30613; }
+  /* 新任务卡：从底部升起 + 红色呼吸左边条 */
+  .card.new {
+    border-left: 3px solid #e30613;
+    animation: card-in .55s cubic-bezier(.16,1,.3,1) .7s both;
+  }
+  @keyframes card-in {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .pulse { display: inline-block; width: 6px; height: 6px; background: #e30613; animation: pulse 1.2s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
+
+  /* ============ 右侧对话坞 ============ */
+  .dock {
+    width: 400px; flex-shrink: 0; border-left: 1px solid #e5e5e3;
+    display: flex; flex-direction: column; min-height: 0; background: #fff;
+  }
+  body.task .dock { display: none; }
+  .dock-head { padding: 12px 16px; border-bottom: 1px solid #e5e5e3; display: flex; justify-content: space-between; align-items: baseline; }
+  .dock-title { font-weight: 700; font-size: 13px; }
+  .dock-body { flex: 1; overflow-y: auto; padding: 16px; }
+  .msg { border-top: 1px solid #f0f0ee; padding: 12px 0; }
+  .msg:first-child { border-top: none; }
+  .who-user { color: #e30613; }
+  .who-agent { color: #a8a8a8; }
+  .dock-input { border-top: 1px solid #e5e5e3; padding: 12px 16px; display: flex; gap: 10px; }
+  .dock-input input { flex: 1; border: 1px solid #e5e5e3; border-radius: 2px; padding: 8px 10px; font: inherit; outline: none; }
+  .dock-input input:focus { border-color: #e30613; }
+
+  /* ============ 任务子页 ============ */
+  .taskview { display: none; flex: 1; min-height: 0; }
+  body.task .taskview { display: flex; }
+  body.task .board, body.task .dock { display: none; }
+  .flow {
+    width: 400px; flex-shrink: 0; border-right: 1px solid #e5e5e3; overflow-y: auto; padding: 20px;
+  }
+  .back { color: #6b6b6b; cursor: pointer; }
+  .back:hover { color: #e30613; }
+  .instruction { margin-top: 16px; padding: 12px 14px; border: 1px solid #e5e5e3; border-left: 3px solid #e30613; border-radius: 2px; }
+  .instruction .micro { color: #e30613; }
+  .instruction p { margin-top: 6px; font-size: 13px; }
+  .steps { margin-top: 24px; }
+  .step { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid #f0f0ee; font-size: 13px; }
+  .step .mark { width: 14px; flex-shrink: 0; font-weight: 700; }
+  .step.done .mark { color: #111; }
+  .step.doing .mark { color: #e30613; }
+  .step.todo { color: #a8a8a8; }
+  .step .detail { color: #a8a8a8; font-size: 11px; margin-top: 2px; font-family: ui-monospace, monospace; }
+  /* 右侧实时预览 */
+  .preview { flex: 1; overflow-y: auto; padding: 28px 32px; background: #fafafa; }
+  .doc { max-width: 680px; margin: 0 auto; background: #fff; border: 1px solid #e5e5e3; border-radius: 2px; padding: 40px 44px; min-height: 80%; }
+  .doc h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; border-bottom: 2px solid #111; padding-bottom: 10px; }
+  .doc h2 { font-size: 14px; font-weight: 700; margin-top: 22px; }
+  .doc p { margin-top: 10px; font-size: 13px; }
+  .doc blockquote { border-left: 2px solid #111; padding-left: 12px; color: #6b6b6b; margin-top: 10px; font-size: 13px; }
+  .doc .line { opacity: 0; transform: translateY(4px); transition: opacity .3s, transform .3s; }
+  .doc .line.show { opacity: 1; transform: translateY(0); }
+  .caret { display: inline-block; width: 7px; height: 14px; background: #e30613; vertical-align: -2px; animation: pulse .9s infinite; }
+
+  .replay { position: fixed; bottom: 16px; left: 24px; z-index: 40; color: #a8a8a8; cursor: pointer; }
+  .replay:hover { color: #e30613; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wordmark">Mju<i>—</i>Agents</div>
+  <nav class="micro"><a class="on">Board</a><a>Sessions</a><a>Dates</a><a>System</a></nav>
+</header>
+
+<!-- ================= 进入页 ================= -->
+<div class="entry">
+  <div class="hero-mark">Mju<i>—</i>Agents</div>
+  <div class="hero-sub micro">Local Agent Workbench</div>
+  <div class="entry-composer">
+    <textarea id="taskInput">补强「个人未实际得利」的判例检索：重点找自然人代收、款项完整入公司账的类案，输出检索报告。</textarea>
+    <div class="entry-bar">
+      <span class="meta">Chariot · GPT-5.6 Terra</span>
+      <button class="send" onclick="launch()">→</button>
+    </div>
+  </div>
+  <div class="hint">点击 → 观看过渡动画</div>
+</div>
+
+<!-- ================= 看板 ================= -->
+<div class="workspace">
+  <main class="board">
+    <div class="board-head">
+      <h1>崇安公司 vs 黄欢英</h1>
+      <span class="micro" style="color:#a8a8a8">诉讼 · 收案阶段</span>
+    </div>
+    <div class="cols">
+      <section class="col">
+        <h2 class="micro"><span>待办</span><span>2</span></h2>
+        <div class="card"><div class="card-title">整理被告流水三性意见</div><div class="card-meta"><span>Justice</span><span class="tag tag-grey">7-25</span></div></div>
+        <div class="card"><div class="card-title">起草代理词框架</div><div class="card-meta"><span>Magician</span><span class="tag tag-grey">7-28</span></div></div>
+      </section>
+      <section class="col">
+        <h2 class="micro"><span>进行中</span><span>1</span></h2>
+        <div class="card new" onclick="openTask()">
+          <div class="card-title">补强「个人未实际得利」的判例检索</div>
+          <div class="card-meta"><span>Chariot</span><span><span class="pulse"></span> <span class="tag tag-red">执行中</span></span></div>
+        </div>
+      </section>
+      <section class="col">
+        <h2 class="micro"><span>完成</span><span>2</span></h2>
+        <div class="card"><div class="card-title">主体资格与收款权分析</div><div class="card-meta"><span>Justice</span><span class="tag tag-grey">已完成</span></div></div>
+        <div class="card"><div class="card-title">案卷材料归档</div><div class="card-meta"><span>Chariot</span><span class="tag tag-grey">已完成</span></div></div>
+      </section>
+    </div>
+  </main>
+
+  <aside class="dock">
+    <div class="dock-head">
+      <span class="dock-title">补强「个人未实际得利」的判例检索</span>
+      <span class="micro" style="color:#a8a8a8">Chariot</span>
+    </div>
+    <div class="dock-body" id="dockBody">
+      <div class="msg"><div class="micro who-user">User</div><p style="margin-top:6px">重点找自然人代收、款项完整入公司账的类案。</p></div>
+      <div class="msg"><div class="micro who-agent">Chariot</div><p style="margin-top:6px" id="dockStream"></p></div>
+    </div>
+    <div class="dock-input">
+      <input placeholder="追问或追加指令…">
+      <button class="send">→</button>
+    </div>
+  </aside>
+
+  <!-- ================= 任务子页 ================= -->
+  <div class="taskview">
+    <div class="flow">
+      <div class="micro back" onclick="closeTask()">← 返回看板</div>
+      <div class="instruction">
+        <span class="micro">User · 指令</span>
+        <p>补强「个人未实际得利」的判例检索：重点找自然人代收、款项完整入公司账的类案，输出检索报告。</p>
+      </div>
+      <div class="steps">
+        <div class="step done"><span class="mark">✓</span><div>解析指令，确定检索要点<div class="detail">read · 裁判要点 3 条</div></div></div>
+        <div class="step done"><span class="mark">✓</span><div>检索类案<div class="detail">web_search · 6 件相关判例</div></div></div>
+        <div class="step doing"><span class="mark">▪</span><div>撰写检索报告<div class="detail">write · ops/cases/案卷/崇安公司vs黄欢英/检索报告.md</div></div></div>
+        <div class="step todo"><span class="mark">·</span><div>复核引用与格式</div></div>
+      </div>
+    </div>
+    <div class="preview">
+      <div class="doc" id="doc">
+        <h1 class="line">判例检索报告：自然人代收款项与不当得利得利人认定</h1>
+        <h2 class="line">一、检索要点</h2>
+        <p class="line">自然人受公司委托代收货款，款项完整进入公司账户并由公司支配的，不宜认定自然人为《民法典》第 985 条的得利人。</p>
+        <h2 class="line">二、重点判例</h2>
+        <p class="line">1. (2023) 闽 01 民终 3892 号——业务员代收货款已全额入账，法院认定得利主体为公司。</p>
+        <p class="line">2. (2022) 浙 02 民终 774 号——个人账户收款但次日闭合转入公司，不构成个人得利。</p>
+        <blockquote class="line">裁判规则：「得利」看财产最终归属与支配，而非经手收取。</blockquote>
+        <p class="line"><span class="caret"></span></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="micro replay" onclick="reset()">↺ 重播</div>
+
+<script>
+  const body = document.body;
+  function launch() {
+    body.classList.add('board');
+    typeDock();
+  }
+  function openTask() {
+    body.classList.add('task');
+    revealDoc();
+  }
+  function closeTask() { body.classList.remove('task'); }
+  function reset() {
+    body.classList.remove('board', 'task');
+    document.getElementById('dockStream').textContent = '';
+    document.querySelectorAll('.doc .line').forEach(el => el.classList.remove('show'));
+  }
+  // 对话坞里模拟流式输出
+  function typeDock() {
+    const text = '收到。先解析检索要点，然后开始类案检索，报告会写入案卷目录。';
+    const el = document.getElementById('dockStream');
+    let i = 0;
+    const t = setInterval(() => {
+      if (body.classList.contains('task') || !body.classList.contains('board')) { clearInterval(t); return; }
+      el.textContent = text.slice(0, ++i);
+      if (i >= text.length) clearInterval(t);
+    }, 45);
+  }
+  // 文档预览逐行浮现
+  function revealDoc() {
+    const lines = [...document.querySelectorAll('.doc .line')];
+    lines.forEach((el, i) => setTimeout(() => el.classList.add('show'), 500 + i * 420));
+  }
+  // 支持 hash 直达：#board / #task（截图用）
+  if (location.hash === '#board') { body.classList.add('board'); document.getElementById('dockStream').textContent = '收到。先解析检索要点，然后开始类案检索，报告会写入案卷目录。'; }
+  if (location.hash === '#task') { body.classList.add('board','task'); document.querySelectorAll('.doc .line').forEach(el => el.classList.add('show')); }
+</script>
+</body>
+</html>

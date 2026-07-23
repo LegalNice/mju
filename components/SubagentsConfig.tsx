@@ -243,8 +243,8 @@ export function SubagentsConfig({ cwd, onClose }: { cwd?: string | null; onClose
                   fontWeight: 600, cursor: "pointer", textAlign: "left",
                   transition: "all .2s ease",
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(212,93,58,.12)"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = colors.accentSoft; }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = colors.accent; e.currentTarget.style.color = "#fff"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = colors.accentSoft; e.currentTarget.style.color = colors.accent; }}
               >
                 <span style={{ fontSize: 18, lineHeight: 1 }}>+</span>
                 新建 Subagent
@@ -294,7 +294,7 @@ export function SubagentsConfig({ cwd, onClose }: { cwd?: string | null; onClose
             </aside>
 
             <main style={{ flex: 1, minWidth: 0, padding: 24, overflow: "auto", background: colors.bg }}>
-              <div style={{ position: "sticky", top: -24, zIndex: 5, display: "flex", justifyContent: "flex-end", gap: 10, margin: "-24px -24px 20px", padding: "12px 24px", borderBottom: `1px solid ${colors.borderLight}`, background: "rgba(253,252,251,.92)", backdropFilter: "blur(12px)" }}>
+              <div style={{ position: "sticky", top: -24, zIndex: 5, display: "flex", justifyContent: "flex-end", gap: 10, margin: "-24px -24px 20px", padding: "12px 24px", borderBottom: `1px solid ${colors.borderLight}`, background: colors.card }}>
                 <button
                   onClick={() => void save()}
                   disabled={saving || !form.name || !form.description}

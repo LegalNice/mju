@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { createEmptyStore, touchStore, type MjuStore } from "./mju-models";
+import { createEmptyStore, touchStore, type Case, type MjuStore } from "./mju-models";
 import { mjuProjectDir } from "./mju-paths";
 
 const STORE_FILE = "store.json";
@@ -48,9 +48,40 @@ export function readStore(cwd: string): MjuStore | null {
 export function writeStore(cwd: string, store: MjuStore): void {
   ensureMjuDir(cwd);
   const path = storePath(cwd);
+  // Self-heal the absolute cwd into the store so /api/projects can list
+  // projects without reverse-engineering the encoded directory name.
+  if (store.cwd !== cwd) store.cwd = cwd;
   const temporaryPath = `${path}.${process.pid}.${Date.now()}.tmp`;
   writeFileSync(temporaryPath, JSON.stringify(touchStore(store), null, 2) + "\n", "utf8");
   renameSync(temporaryPath, path);
+}
+
+export const INBOX_CASE_TITLE = "通用任务";
+export const INBOX_CASE_STAGE = "收件箱";
+
+/**
+ * Return the project's inbox case ("通用任务"), creating it — and its folder —
+ * on first use. Tasks whose owning case could not be detected land here.
+ */
+export function ensureInboxCase(cwd: string, store: MjuStore): Case {
+  const existing = store.cases.find(
+    (c) => c.title === INBOX_CASE_TITLE && c.stage === INBOX_CASE_STAGE,
+  );
+  if (existing) return existing;
+  const vaultPath = store.isObsidianVault ? join(cwd, "ops", "inbox") : join(cwd, "inbox");
+  mkdirSync(vaultPath, { recursive: true });
+  const inbox: Case = {
+    id: crypto.randomUUID(),
+    title: INBOX_CASE_TITLE,
+    type: "advisory",
+    stage: INBOX_CASE_STAGE,
+    status: "active",
+    vaultPath,
+    createdAt: new Date().toISOString(),
+  };
+  store.cases.push(inbox);
+  writeStore(cwd, store);
+  return inbox;
 }
 
 export function isMjuStore(value: unknown): value is MjuStore {

@@ -29,6 +29,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
         overflowX: "auto",
         flexShrink: 0,
         height: 36,
+        borderBottom: "1px solid var(--border)",
       }}
     >
       {tabs.map((tab) => {
@@ -37,6 +38,8 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
           <div
             key={tab.id}
             onClick={() => onSelectTab(tab.id)}
+            onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.color = "var(--text)"; }}
+            onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.color = "var(--text-muted)"; }}
             style={{
               display: "flex",
               alignItems: "center",
@@ -46,6 +49,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
               paddingRight: 6,
               borderRight: "1px solid var(--border)",
               background: isActive ? "var(--bg)" : "var(--bg-panel)",
+              boxShadow: isActive ? "inset 0 -2px 0 var(--accent)" : "none",
               cursor: "pointer",
               fontSize: 12,
               color: isActive ? "var(--text)" : "var(--text-muted)",
@@ -65,7 +69,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 flex: 1,
-                fontWeight: isActive ? 500 : 400,
+                fontWeight: isActive ? 600 : 400,
               }}
               title={tab.filePath}
             >
@@ -77,20 +81,20 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
               onMouseLeave={() => setHoveredClose(null)}
               style={{
                 display: "flex", alignItems: "center", justifyContent: "center",
-                width: 24, height: 24,
-                background: hoveredClose === tab.id ? "var(--bg-hover)" : "transparent",
+                width: 16, height: 16,
+                background: "transparent",
                 border: "none",
-                borderRadius: 4,
+                borderRadius: 0,
                 color: hoveredClose === tab.id ? "var(--text)" : "var(--text-dim)",
                 cursor: "pointer",
                 padding: 0,
                 flexShrink: 0,
-                transition: "background 0.1s, color 0.1s",
+                transition: "color 0.1s",
               }}
               title="Close"
               aria-label={`Close ${tab.label}`}
             >
-              <svg width="11" height="11" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+              <svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
                 <line x1="2" y1="2" x2="8" y2="8" />
                 <line x1="8" y1="2" x2="2" y2="8" />
               </svg>

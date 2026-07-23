@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>Mju—Agents · 对话优先</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, "PingFang SC", sans-serif;
+    color: #111; background: #fff; font-size: 14px; line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .micro { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+  /* masthead */
+  header {
+    height: 52px; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 24px; border-bottom: 1px solid #e5e5e3;
+  }
+  .wordmark { font-weight: 700; font-size: 15px; letter-spacing: -0.01em; }
+  .wordmark i { font-style: normal; color: #e30613; }
+  nav { display: flex; gap: 24px; }
+  nav a { color: #6b6b6b; text-decoration: none; cursor: pointer; }
+  nav a:hover { color: #111; }
+  /* hero */
+  main { max-width: 720px; margin: 0 auto; padding: 96px 24px 64px; }
+  .hero-mark { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; text-align: center; }
+  .hero-mark i { font-style: normal; color: #e30613; }
+  .hero-sub { text-align: center; color: #a8a8a8; margin-top: 10px; }
+  /* composer */
+  .composer {
+    margin-top: 40px; border: 1px solid #e5e5e3; border-radius: 2px; padding: 16px;
+    transition: border-color .15s;
+  }
+  .composer:focus-within { border-color: #e30613; }
+  .composer textarea {
+    width: 100%; border: none; outline: none; resize: none; font: inherit; color: #111;
+    background: transparent; min-height: 44px;
+  }
+  .composer-bar { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+  .composer-bar .meta { color: #6b6b6b; font-size: 11px; letter-spacing: .06em; }
+  .send {
+    width: 28px; height: 28px; border: none; border-radius: 2px; background: #e30613; color: #fff;
+    font-size: 15px; cursor: pointer;
+  }
+  .send:hover { background: #b30510; }
+  /* recents */
+  .recents { margin-top: 56px; }
+  .recents h2 { color: #a8a8a8; padding-bottom: 8px; border-bottom: 1px solid #e5e5e3; }
+  .row {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 16px;
+    padding: 12px 0; border-bottom: 1px solid #e5e5e3; cursor: pointer;
+  }
+  .row:hover .row-title { color: #e30613; }
+  .row-title { font-weight: 600; transition: color .12s; }
+  .row-meta { color: #a8a8a8; font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  /* palette overlay */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.28); display: none;
+    align-items: flex-start; justify-content: center; padding-top: 120px;
+  }
+  .overlay.open { display: flex; }
+  .palette {
+    width: 560px; max-width: 92vw; background: #fff; border: 1px solid #e5e5e3; border-radius: 2px;
+    box-shadow: 0 24px 64px rgba(0,0,0,.18);
+  }
+  .palette input {
+    width: 100%; border: none; border-bottom: 1px solid #e5e5e3; outline: none;
+    padding: 14px 16px; font: inherit;
+  }
+  .palette .row { padding: 11px 16px; border-bottom: 1px solid #f0f0ee; }
+  .palette .row:last-child { border-bottom: none; }
+  kbd {
+    font: 11px var(--mono, ui-monospace); color: #6b6b6b; border: 1px solid #e5e5e3;
+    border-radius: 2px; padding: 1px 5px;
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="wordmark">Mju<i>—</i>Agents</div>
+  <nav class="micro">
+    <a onclick="toggleOverlay(true)">Sessions ⌘K</a>
+    <a>Cases</a><a>Tasks</a><a>Dates</a><a>System</a>
+  </nav>
+</header>
+
+<main>
+  <div class="hero-mark">Mju<i>—</i>Agents</div>
+  <div class="hero-sub micro">Local Agent Workbench</div>
+
+  <div class="composer">
+    <textarea placeholder="给代理布置一项工作…  / 命令 · @ 文件 · /agent 任务"></textarea>
+    <div class="composer-bar">
+      <span class="meta">GPT-5.6 Terra · medium · default</span>
+      <button class="send" onclick="alert('已发送（示意）')">→</button>
+    </div>
+  </div>
+
+  <section class="recents">
+    <h2 class="micro">最近会话</h2>
+    <div class="row" onclick="alert('打开会话（示意）')">
+      <span class="row-title">崇安公司 vs 黄欢英 · 不当得利得利人认定</span>
+      <span class="row-meta">4h ago · 42 msgs</span>
+    </div>
+    <div class="row" onclick="alert('打开会话（示意）')">
+      <span class="row-title">构建三个 subagent：Justice / Magician / Chariot</span>
+      <span class="row-meta">4h ago · 6 msgs</span>
+    </div>
+    <div class="row" onclick="alert('打开会话（示意）')">
+      <span class="row-title">兴众为 vs 厦门方航 · 证据清单初稿</span>
+      <span class="row-meta">昨天 · 18 msgs</span>
+    </div>
+    <div class="row" onclick="alert('打开会话（示意）')">
+      <span class="row-title">常法-学知义 · 季度合同巡检</span>
+      <span class="row-meta">3 天前 · 27 msgs</span>
+    </div>
+  </section>
+</main>
+
+<div class="overlay" id="overlay" onclick="if(event.target===this)toggleOverlay(false)">
+  <div class="palette">
+    <input placeholder="搜索会话、案件、文件…  (Esc 关闭)" autofocus>
+    <div class="row"><span class="row-title">崇安公司 vs 黄欢英 · 不当得利得利人认定</span><span class="row-meta">4h ago</span></div>
+    <div class="row"><span class="row-title">构建三个 subagent</span><span class="row-meta">4h ago</span></div>
+    <div class="row"><span class="row-title">兴众为 vs 厦门方航 · 证据清单初稿</span><span class="row-meta">昨天</span></div>
+    <div class="row"><span class="row-title">常法-微森公司 · 顾问合同续签</span><span class="row-meta">5 天前</span></div>
+  </div>
+</div>
+
+<script>
+  function toggleOverlay(open) {
+    document.getElementById('overlay').classList.toggle('open', open);
+    if (open) document.querySelector('.palette input').focus();
+  }
+  document.addEventListener('keydown', e => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); toggleOverlay(true); }
+    if (e.key === 'Escape') toggleOverlay(false);
+  });
+</script>
+</body>
+</html>

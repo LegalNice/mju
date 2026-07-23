@@ -176,7 +176,6 @@ export function TaskBoard({ cwd, onClose }: { cwd: string; onClose: () => void }
                 style={{
                   padding: 16, borderRadius: radius.lg, background: colors.card,
                   border: `1px solid ${colors.borderLight}`,
-                  boxShadow: colors.shadowSm,
                   animation: "mju-slide-up .35s cubic-bezier(.16,1,.3,1) .05s both",
                 }}
               >
@@ -328,7 +327,7 @@ export function TaskBoard({ cwd, onClose }: { cwd: string; onClose: () => void }
             <div
               style={{
                 position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
-                background: "rgba(0,0,0,.2)", backdropFilter: "blur(6px)",
+                background: "rgba(0,0,0,.2)",
                 animation: "mju-fade-in .2s ease-out",
               }}
               onClick={(event) => { if (event.target === event.currentTarget) setSelected(null); }}

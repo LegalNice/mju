@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>Mju—Agents · 刊物目录</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, "PingFang SC", sans-serif;
+    color: #111; background: #fff; font-size: 14px; line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .micro { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+  header {
+    height: 52px; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 24px; border-bottom: 1px solid #e5e5e3;
+  }
+  .wordmark { font-weight: 700; font-size: 15px; }
+  .wordmark i { font-style: normal; color: #e30613; }
+  nav { display: flex; gap: 24px; }
+  nav a { color: #6b6b6b; text-decoration: none; cursor: pointer; }
+  nav a:hover { color: #111; }
+
+  /* ---- index view ---- */
+  .index { max-width: 860px; margin: 0 auto; padding: 64px 24px 96px; }
+  .issue { color: #a8a8a8; margin-bottom: 32px; display: flex; justify-content: space-between; border-bottom: 2px solid #111; padding-bottom: 10px; }
+  .entry { display: grid; grid-template-columns: 48px 1fr auto; gap: 20px; padding: 18px 0; border-bottom: 1px solid #e5e5e3; cursor: pointer; align-items: baseline; }
+  .entry-no { color: #a8a8a8; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .entry-title { font-size: 19px; font-weight: 700; letter-spacing: -0.01em; transition: color .12s; }
+  .entry:hover .entry-title { color: #e30613; }
+  .entry-meta { margin-top: 5px; color: #6b6b6b; font-size: 12px; }
+  .entry-date { color: #a8a8a8; font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .entry-running { display: inline-block; width: 6px; height: 6px; background: #e30613; margin-right: 6px; }
+
+  /* ---- reader view ---- */
+  .reader { display: none; max-width: 760px; margin: 0 auto; padding: 32px 24px 96px; }
+  .back { color: #6b6b6b; cursor: pointer; }
+  .back:hover { color: #e30613; }
+  .msg { border-top: 1px solid #e5e5e3; padding: 20px 0; }
+  .msg-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+  .who-user { color: #e30613; }
+  .who-agent { color: #a8a8a8; }
+  .msg-time { color: #a8a8a8; font-size: 11px; font-variant-numeric: tabular-nums; }
+  blockquote { border-left: 2px solid #111; padding-left: 12px; color: #6b6b6b; margin: 10px 0; }
+  body.reading .index { display: none; }
+  body.reading .reader { display: block; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wordmark">Mju<i>—</i>Agents</div>
+  <nav class="micro"><a>Cases</a><a>Tasks</a><a>Dates</a><a>System</a></nav>
+</header>
+
+<!-- 目录视图 -->
+<main class="index">
+  <div class="issue micro"><span>会话目录 · 2026 年 7 月</span><span>4 篇</span></div>
+
+  <div class="entry" onclick="openReader()">
+    <span class="entry-no">01</span>
+    <div>
+      <div class="entry-title">崇安公司 vs 黄欢英 · 不当得利得利人认定</div>
+      <div class="entry-meta">检索与论证 · GPT-5.6 Terra · 42 条消息 · 引用 6 份判例</div>
+    </div>
+    <span class="entry-date">2026-07-23</span>
+  </div>
+  <div class="entry" onclick="openReader()">
+    <span class="entry-no">02</span>
+    <div>
+      <div class="entry-title"><span class="entry-running"></span>兴众为 vs 厦门方航 · 证据清单初稿</div>
+      <div class="entry-meta">Chariot 执行中 · 已完成 3/5 项</div>
+    </div>
+    <span class="entry-date">2026-07-22</span>
+  </div>
+  <div class="entry" onclick="openReader()">
+    <span class="entry-no">03</span>
+    <div>
+      <div class="entry-title">构建三个 subagent：Justice / Magician / Chariot</div>
+      <div class="entry-meta">配置 · 6 条消息</div>
+    </div>
+    <span class="entry-date">2026-07-21</span>
+  </div>
+  <div class="entry" onclick="openReader()">
+    <span class="entry-no">04</span>
+    <div>
+      <div class="entry-title">常法-学知义 · 季度合同巡检</div>
+      <div class="entry-meta">审查 · 27 条消息 · 生成 DOCX 一份</div>
+    </div>
+    <span class="entry-date">2026-07-18</span>
+  </div>
+</main>
+
+<!-- 阅读视图 -->
+<main class="reader">
+  <div class="micro back" onclick="closeReader()">← 返回目录</div>
+  <h1 style="font-size:24px;font-weight:700;letter-spacing:-0.01em;margin:16px 0 24px">崇安公司 vs 黄欢英 · 不当得利得利人认定</h1>
+
+  <div class="msg">
+    <div class="msg-head"><span class="micro who-user">User</span><span class="msg-time">09:41</span></div>
+    <p>公司本身无收款权，能否直接认定收款自然人是全部不当得利的得利人？帮我检索并给出论证结构。</p>
+  </div>
+  <div class="msg">
+    <div class="msg-head"><span class="micro who-agent">Assistant · GPT-5.6 Terra</span><span class="msg-time">09:42</span></div>
+    <p>不能仅因公司无收款权就当然否定「职务行为/代理收款」抗辩。关键仍是款项在法律上、经济上最终由谁取得和控制。</p>
+    <blockquote>授权不能创设公司的对外收费权——该结论首先指向崇兴公司作为受益主体，而非自动等于黄欢英个人得利。</blockquote>
+  </div>
+</main>
+
+<script>
+  function openReader() { document.body.classList.add('reading'); window.scrollTo(0,0); }
+  function closeReader() { document.body.classList.remove('reading'); }
+</script>
+</body>
+</html>

@@ -59,6 +59,8 @@ export interface Task {
   deliverablePath?: string;
   relatedFiles?: string[];
   workflowId?: string;
+  sessionId?: string;              // 绑定的 pi 会话 id（进入页发起的任务）
+  originPrompt?: string;           // 用户原始指令（任务子页左栏展示）
   createdAt: string;
   completedAt?: string;
 }
@@ -115,6 +117,7 @@ export interface MjuStore {
   projectName: string;
   projectType?: CaseType;
   isObsidianVault?: boolean;
+  cwd?: string;                  // 项目根目录绝对路径（writeStore 自动回填，供项目列表解码）
   clients: Client[];
   cases: Case[];
   tasks: Task[];

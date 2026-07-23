@@ -15,6 +15,7 @@ const tasksRoute = await jiti.import("./tasks/route.ts");
 const deadlinesRoute = await jiti.import("./deadlines/route.ts");
 const schedulesRoute = await jiti.import("./schedules/route.ts");
 const workflowsRoute = await jiti.import("./workflows/route.ts");
+const projectsRoute = await jiti.import("./projects/route.ts");
 
 function url(path, query = {}) {
   const params = new URLSearchParams(query);
@@ -156,4 +157,61 @@ test("previews and starts a case-compatible workflow exactly once", async (t) =>
 
   const refreshed = await call(workflowsRoute.GET, "/api/workflows", { query: { cwd, caseId: caseItem.id } });
   assert.equal(refreshed.body.workflows[0].started, true);
+});
+
+test("binds a session and origin prompt to a task via POST and PATCH", async (t) => {
+  const cwd = makeProject(t);
+  const caseItem = await createCase(cwd);
+
+  const created = await call(tasksRoute.POST, "/api/tasks", {
+    method: "POST",
+    body: {
+      cwd, caseId: caseItem.id, title: "判例检索", assignee: "auto",
+      status: "进行中", sessionId: "sess-123", originPrompt: "帮我检索相关判例",
+    },
+  });
+  assert.equal(created.status, 200);
+  assert.equal(created.body.task.sessionId, "sess-123");
+  assert.equal(created.body.task.originPrompt, "帮我检索相关判例");
+  assert.equal(readStore(cwd)?.tasks[0].sessionId, "sess-123");
+
+  const rebound = await call(tasksRoute.PATCH, "/api/tasks", {
+    method: "PATCH",
+    body: { cwd, id: created.body.task.id, sessionId: "sess-456" },
+  });
+  assert.equal(rebound.status, 200);
+  assert.equal(rebound.body.task.sessionId, "sess-456");
+  assert.equal(rebound.body.task.originPrompt, "帮我检索相关判例");
+
+  const invalid = await call(tasksRoute.POST, "/api/tasks", {
+    method: "POST",
+    body: { cwd, caseId: caseItem.id, title: "坏类型", assignee: "auto", sessionId: 42 },
+  });
+  assert.equal(invalid.status, 400);
+});
+
+test("creates the inbox case exactly once via ensure_inbox", async (t) => {
+  const cwd = makeProject(t);
+
+  const first = await call(casesRoute.POST, "/api/cases", { method: "POST", body: { cwd, action: "ensure_inbox" } });
+  assert.equal(first.status, 200);
+  assert.equal(first.body.case.title, "通用任务");
+  assert.equal(first.body.case.stage, "收件箱");
+
+  const second = await call(casesRoute.POST, "/api/cases", { method: "POST", body: { cwd, action: "ensure_inbox" } });
+  assert.equal(second.status, 200);
+  assert.equal(second.body.case.id, first.body.case.id);
+  assert.equal(readStore(cwd)?.cases.length, 1);
+});
+
+test("lists initialized projects with decoded cwd", async (t) => {
+  const cwd = makeProject(t);
+  await createCase(cwd);
+
+  const listed = await call(projectsRoute.GET, "/api/projects");
+  assert.equal(listed.status, 200);
+  const found = listed.body.projects.find((project) => project.cwd === cwd);
+  assert.ok(found, "project should be discoverable by its real cwd");
+  assert.equal(found.name, "API test");
+  assert.equal(found.caseCount, 1);
 });

@@ -181,7 +181,6 @@ export function CaseBoard({ cwd, onClose, onSelectCase }: CaseBoardProps) {
                 style={{
                   padding: 16, borderRadius: radius.lg, background: colors.card,
                   border: `1px solid ${colors.borderLight}`,
-                  boxShadow: colors.shadowSm,
                   animation: "mju-slide-up .35s cubic-bezier(.16,1,.3,1) .05s both",
                 }}
               >
@@ -230,10 +229,10 @@ export function CaseBoard({ cwd, onClose, onSelectCase }: CaseBoardProps) {
                       display: "flex", alignItems: "center", gap: 12, padding: "14px 16px",
                       borderRadius: radius.lg, background: colors.card, border: `1px solid ${colors.borderLight}`,
                       animation: `mju-slide-up .35s cubic-bezier(.16,1,.3,1) ${item.delay} both`,
-                      transition: "transform .2s ease, box-shadow .2s ease",
+                      transition: "transform .2s ease",
                     }}
-                    onMouseEnter={(e) => { e.currentTarget.style.transform = "translateX(4px)"; e.currentTarget.style.boxShadow = colors.shadow; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.transform = "translateX(0)"; e.currentTarget.style.boxShadow = "none"; }}
+                    onMouseEnter={(e) => { e.currentTarget.style.transform = "translateX(4px)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.transform = "translateX(0)"; }}
                   >
                     <span style={{ color: colors.accent, display: "grid", placeItems: "center", width: 36, height: 36, borderRadius: radius.md, background: colors.accentSoft }}>
                       {item.icon}

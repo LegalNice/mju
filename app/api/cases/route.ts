@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { NextResponse } from "next/server";
-import { readStore, writeStore } from "@/lib/mju-store";
+import { readStore, writeStore, ensureInboxCase } from "@/lib/mju-store";
 import type { Case, CaseType } from "@/lib/mju-models";
 
 export const runtime = "nodejs";
@@ -25,7 +25,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json() as Partial<Case> & { cwd?: string };
+    const body = await req.json() as Partial<Case> & { cwd?: string; action?: string };
     const cwd = body.cwd;
     if (!cwd || !existsSync(cwd)) {
       return NextResponse.json({ error: "cwd does not exist" }, { status: 400 });
@@ -33,6 +33,12 @@ export async function POST(req: Request) {
     const store = readStore(cwd);
     if (!store) {
       return NextResponse.json({ error: "Mju project not initialized" }, { status: 404 });
+    }
+
+    // 通用任务收件箱：按需创建（幂等）
+    if (body.action === "ensure_inbox") {
+      const inbox = ensureInboxCase(cwd, store);
+      return NextResponse.json({ success: true, case: inbox });
     }
 
     const title = body.title?.trim();

@@ -2,7 +2,7 @@
 
 import { useCallback, useSyncExternalStore } from "react";
 
-export type ThemeName = "paper" | "atelier" | "kimi" | "night" | "terminal";
+export type ThemeName = "paper" | "night";
 
 const listeners = new Set<() => void>();
 
@@ -15,8 +15,7 @@ function subscribe(cb: () => void): () => void {
 
 function getSnapshot(): ThemeName {
   if (typeof document === "undefined") return "paper";
-  const theme = document.documentElement.dataset.theme as ThemeName | undefined;
-  if (theme === "atelier" || theme === "kimi" || theme === "night" || theme === "terminal") return theme;
+  if (document.documentElement.dataset.theme === "night") return "night";
   return document.documentElement.classList.contains("dark") ? "night" : "paper";
 }
 
@@ -31,10 +30,10 @@ export function useTheme() {
 
   const setTheme = useCallback((next: ThemeName) => {
     document.documentElement.dataset.theme = next;
-    document.documentElement.classList.toggle("dark", next === "night" || next === "terminal");
+    document.documentElement.classList.toggle("dark", next === "night");
     try {
       localStorage.setItem("mju-visual-theme", next);
-      localStorage.setItem("mju-theme", next === "night" || next === "terminal" ? "dark" : "light");
+      localStorage.setItem("mju-theme", next === "night" ? "dark" : "light");
     } catch {
       // ignore storage errors
     }
@@ -42,7 +41,7 @@ export function useTheme() {
   }, []);
 
   const toggleTheme = useCallback((origin?: ToggleOrigin) => {
-    const next: ThemeName = getSnapshot() === "night" || getSnapshot() === "terminal" ? "paper" : "night";
+    const next: ThemeName = getSnapshot() === "night" ? "paper" : "night";
 
     const apply = () => {
       setTheme(next);
@@ -85,5 +84,5 @@ export function useTheme() {
       });
   }, [setTheme]);
 
-  return { theme, setTheme, toggleTheme, isDark: theme === "night" || theme === "terminal" };
+  return { theme, setTheme, toggleTheme, isDark: theme === "night" };
 }

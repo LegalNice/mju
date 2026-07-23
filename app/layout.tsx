@@ -25,7 +25,7 @@ export default function RootLayout({
         <meta name="google" content="notranslate" />
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var v=localStorage.getItem("mju-visual-theme")||localStorage.getItem("pi-visual-theme")||((localStorage.getItem("mju-theme")||localStorage.getItem("pi-theme"))==="dark"?"night":"paper");document.documentElement.dataset.theme=v;if(v==="night"||v==="terminal")document.documentElement.classList.add("dark")}catch(e){}})();`,
+            __html: `(function(){try{var v=localStorage.getItem("mju-visual-theme")||localStorage.getItem("pi-visual-theme")||((localStorage.getItem("mju-theme")||localStorage.getItem("pi-theme"))==="dark"?"night":"paper");v=(v==="night"||v==="terminal")?"night":"paper";document.documentElement.dataset.theme=v;if(v==="night")document.documentElement.classList.add("dark")}catch(e){}})();`,
           }}
         />
       </head>

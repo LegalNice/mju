@@ -68,6 +68,7 @@ export async function POST(req: Request) {
     if (body.estimatedHours !== undefined && !isNonNegativeNumber(body.estimatedHours)) return NextResponse.json({ error: "invalid estimatedHours" }, { status: 400 });
     if (body.actualHours !== undefined && !isNonNegativeNumber(body.actualHours)) return NextResponse.json({ error: "invalid actualHours" }, { status: 400 });
     if (!isOptionalString(body.detail) || !isOptionalString(body.deliverablePath)) return NextResponse.json({ error: "detail and deliverablePath must be strings" }, { status: 400 });
+    if (!isOptionalString(body.sessionId) || !isOptionalString(body.originPrompt)) return NextResponse.json({ error: "sessionId and originPrompt must be strings" }, { status: 400 });
     if (body.relatedFiles !== undefined && (!Array.isArray(body.relatedFiles) || !body.relatedFiles.every(isNonEmptyString))) {
       return NextResponse.json({ error: "relatedFiles must be a string array" }, { status: 400 });
     }
@@ -88,6 +89,8 @@ export async function POST(req: Request) {
       deliverableType: body.deliverableType,
       deliverablePath: body.deliverablePath?.trim(),
       relatedFiles: body.relatedFiles?.map((path) => path.trim()),
+      sessionId: body.sessionId?.trim() || undefined,
+      originPrompt: body.originPrompt,
       createdAt: now,
       completedAt: status === "完成" ? now : undefined,
     };
@@ -111,6 +114,7 @@ export async function PATCH(req: Request) {
     const next: Task = { ...current };
 
     if (!isOptionalString(body.detail) || !isOptionalString(body.deliverablePath)) return NextResponse.json({ error: "detail and deliverablePath must be strings" }, { status: 400 });
+    if (!isOptionalString(body.sessionId) || !isOptionalString(body.originPrompt)) return NextResponse.json({ error: "sessionId and originPrompt must be strings" }, { status: 400 });
 
     if (body.caseId !== undefined) {
       if (!isNonEmptyString(body.caseId) || !findCase(project.store, body.caseId)) return NextResponse.json({ error: "valid caseId required" }, { status: 400 });
@@ -151,6 +155,8 @@ export async function PATCH(req: Request) {
       next.deliverableType = body.deliverableType;
     }
     if (body.deliverablePath !== undefined) next.deliverablePath = body.deliverablePath.trim() || undefined;
+    if (body.sessionId !== undefined) next.sessionId = body.sessionId.trim() || undefined;
+    if (body.originPrompt !== undefined) next.originPrompt = body.originPrompt;
     if (body.relatedFiles !== undefined) {
       if (!Array.isArray(body.relatedFiles) || !body.relatedFiles.every(isNonEmptyString)) return NextResponse.json({ error: "relatedFiles must be a string array" }, { status: 400 });
       next.relatedFiles = body.relatedFiles.map((path) => path.trim());
