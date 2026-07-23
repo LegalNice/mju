@@ -45,6 +45,12 @@
 2. 可选同步到 Obsidian 任务文件（未来实现）
 3. 任务执行通过 pi-subagents 调用对应 Agent
 
+### 工作流数据
+
+1. `GET /api/workflows` 按案件类型列出可用工作流，并返回当前案件的启动状态
+2. `POST /api/workflows` 可先预览生成的任务，确认启动后将任务及 `workflowRuns` 写入 `.mju/store.json`
+3. 同一案件的同一工作流仅可启动一次，避免重复生成任务链
+
 ### Agent 配置
 
 1. 默认存储在 `.mju/agents/*.md`
@@ -96,18 +102,18 @@ mju/
 │   ├── api/
 │   │   ├── projects/init/     # 项目初始化
 │   │   ├── cases/             # 案件 CRUD
-│   │   ├── tasks/             # 任务 CRUD（第二阶段）
-│   │   ├── deadlines/         # 期限 CRUD（第二阶段）
-│   │   ├── schedules/         # 日程 CRUD（第二阶段）
+│   │   ├── tasks/             # 任务 CRUD
+│   │   ├── deadlines/         # 期限 CRUD
+│   │   ├── schedules/         # 日程 CRUD
 │   │   ├── workflows/         # 工作流（第三阶段）
 │   │   ├── deliverables/      # 交付物（第四阶段）
 │   │   └── ...
 │   └── page.tsx               # 主入口
 ├── components/
 │   ├── CaseBoard.tsx          # 案件看板
-│   ├── TaskBoard.tsx          # 任务看板
+│   ├── LegalTaskBoard.tsx     # 法律任务看板
 │   ├── SubagentsConfig.tsx    # Agent 配置
-│   ├── DeadlinePanel.tsx      # 期限面板（第二阶段）
+│   ├── DeadlinePanel.tsx      # 期限与日程面板
 │   ├── WorkflowLauncher.tsx   # 工作流启动器（第三阶段）
 │   └── ...
 ├── lib/
