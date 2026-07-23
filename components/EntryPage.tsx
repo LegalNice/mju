@@ -3,11 +3,18 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { Case as MjuCase } from "@/lib/mju-models";
+import type { Case as MjuCase, Deadline, Schedule, Task } from "@/lib/mju-models";
+import { ModelsConfig } from "@/components/ModelsConfig";
+import { SkillsConfig } from "@/components/SkillsConfig";
+import { SubagentsConfig } from "@/components/SubagentsConfig";
+import { PluginsConfig } from "@/components/PluginsConfig";
+import { ThemeConfig } from "@/components/ThemeConfig";
 
 const LS_CWD = "mju-entry-cwd";
 const LS_LAST_CASE = "mju-last-case";
 const INBOX_TITLE = "通用任务";
+
+type ConfigPanel = "models" | "skills" | "agents" | "plugins" | "theme";
 
 interface ProjectSummary {
   cwd: string;
@@ -15,6 +22,87 @@ interface ProjectSummary {
   caseCount: number;
   isObsidianVault: boolean;
   updatedAt: string;
+}
+
+/** One row in the "近期在办" list, merged from tasks, deadlines and schedules. */
+interface AgendaItem {
+  /** YYYY-MM-DD, used for sorting, display and overdue math */
+  date: string;
+  /** HH:mm, schedules only */
+  time?: string;
+  title: string;
+  kind: "task" | "deadline" | "schedule";
+  caseId: string;
+  caseTitle: string;
+  taskId?: string;
+  overdue: boolean;
+}
+
+function localDateString(d: Date): string {
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
+/** "2026-07-25" -> "7-25" */
+function shortDate(date: string): string {
+  return `${Number(date.slice(5, 7))}-${Number(date.slice(8, 10))}`;
+}
+
+function overdueDays(date: string, today: string): number {
+  return Math.round((Date.parse(today) - Date.parse(date)) / 86400000);
+}
+
+/**
+ * Merge the project's open work into one sorted list: tasks with a deadline
+ * (not 完成/取消), deadlines not done, schedules still in the future.
+ * Overdue entries sort first, then ascending by date; capped at 5 rows.
+ */
+function buildAgenda(
+  tasks: Task[],
+  deadlines: Deadline[],
+  schedules: Schedule[],
+  caseTitles: Map<string, string>,
+): AgendaItem[] {
+  const today = localDateString(new Date());
+  const now = new Date();
+  const titleOf = (caseId: string) => caseTitles.get(caseId) ?? "";
+  const items: AgendaItem[] = [];
+
+  for (const t of tasks) {
+    if (!t.deadline || t.status === "完成" || t.status === "取消") continue;
+    const date = t.deadline.slice(0, 10);
+    items.push({
+      date, title: t.title, kind: "task",
+      caseId: t.caseId, caseTitle: titleOf(t.caseId), taskId: t.id,
+      overdue: date < today,
+    });
+  }
+  for (const d of deadlines) {
+    if (d.status === "done") continue;
+    const date = d.date.slice(0, 10);
+    items.push({
+      date, title: d.title, kind: "deadline",
+      caseId: d.caseId, caseTitle: titleOf(d.caseId),
+      overdue: date < today,
+    });
+  }
+  for (const s of schedules) {
+    const when = new Date(s.datetime.replace(" ", "T"));
+    if (Number.isNaN(when.getTime()) || when < now) continue;
+    items.push({
+      date: s.datetime.slice(0, 10), time: s.datetime.slice(11, 16) || undefined,
+      title: s.title, kind: "schedule",
+      caseId: s.caseId, caseTitle: titleOf(s.caseId),
+      overdue: false,
+    });
+  }
+
+  items.sort((a, b) =>
+    Number(b.overdue) - Number(a.overdue)
+    || a.date.localeCompare(b.date)
+    || (a.time ?? "").localeCompare(b.time ?? ""));
+  return items.slice(0, 5);
 }
 
 /** Manual chip override: a concrete case, the inbox, or nothing (auto-detect). */
@@ -86,6 +174,9 @@ export function EntryPage() {
   const [pinned, setPinned] = useState<Pinned>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [modelLabel, setModelLabel] = useState<string | null>(null);
+  const [agenda, setAgenda] = useState<AgendaItem[]>([]);
+  const [hotActive, setHotActive] = useState(false);
+  const [activeConfig, setActiveConfig] = useState<ConfigPanel | null>(null);
   const [launching, setLaunching] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -125,13 +216,27 @@ export function EntryPage() {
     setMenuOpen(false);
 
     let cancelled = false;
-    fetch(`/api/cases?cwd=${encodeURIComponent(project.cwd)}`)
-      .then((res) => (res.ok ? res.json() : { cases: [] }))
-      .then((data: { cases?: MjuCase[] }) => {
-        if (!cancelled) setCases(data.cases ?? []);
+    const enc = encodeURIComponent(project.cwd);
+    const list = <T,>(path: string, key: string): Promise<T[]> =>
+      fetch(`${path}?cwd=${enc}`)
+        .then((res) => (res.ok ? res.json() : { [key]: [] }))
+        .then((data) => (data[key] as T[]) ?? []);
+    Promise.all([
+      list<MjuCase>("/api/cases", "cases"),
+      list<Task>("/api/tasks", "tasks"),
+      list<Deadline>("/api/deadlines", "deadlines"),
+      list<Schedule>("/api/schedules", "schedules"),
+    ])
+      .then(([caseList, tasks, deadlines, schedules]) => {
+        if (cancelled) return;
+        setCases(caseList);
+        const titles = new Map(caseList.map((c) => [c.id, c.title]));
+        setAgenda(buildAgenda(tasks, deadlines, schedules, titles));
       })
       .catch(() => {
-        if (!cancelled) setCases([]);
+        if (cancelled) return;
+        setCases([]);
+        setAgenda([]);
       });
     fetch(`/api/models?cwd=${encodeURIComponent(project.cwd)}`)
       .then((res) => (res.ok ? res.json() : null))
@@ -198,6 +303,15 @@ export function EntryPage() {
     : detected ? detected.title
     : INBOX_TITLE;
   const showChip = Boolean(text.trim());
+  const todayStr = localDateString(new Date());
+
+  const configButtons: { id: ConfigPanel; label: string; needsProject?: boolean }[] = [
+    { id: "models", label: "MODELS" },
+    { id: "skills", label: "SKILLS", needsProject: true },
+    { id: "agents", label: "AGENTS" },
+    { id: "plugins", label: "PLUGINS", needsProject: true },
+    { id: "theme", label: "THEME" },
+  ];
 
   const launch = async () => {
     const instruction = text.trim();
@@ -276,6 +390,9 @@ export function EntryPage() {
         .mju-entry-send:hover:not(:disabled) { background: var(--accent-hover); }
         .mju-entry-change:hover { color: var(--accent); }
         .mju-entry-item:hover { background: var(--bg-hover); }
+        .mju-entry-dates:hover { color: var(--accent); }
+        .mju-entry-agenda:hover .mju-entry-agenda-title { color: var(--accent); }
+        .mju-entry-cfg:hover:not(:disabled) { color: var(--accent); }
       `}</style>
 
       <div style={{ width: "min(640px, 92vw)", display: "flex", flexDirection: "column" }}>
@@ -513,9 +630,182 @@ export function EntryPage() {
                 {error}
               </div>
             )}
+
+            {agenda.length > 0 && (
+              <div style={{ marginTop: 24, textAlign: "left" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "baseline",
+                    paddingBottom: 8,
+                    borderBottom: "1px solid var(--border)",
+                  }}
+                >
+                  <span style={{ ...micro, color: "var(--text-dim)" }}>近期在办</span>
+                  <Link
+                    href="/dates"
+                    className="mju-entry-dates"
+                    style={{ ...micro, color: "var(--text-muted)", textDecoration: "none", transition: "color .15s" }}
+                  >
+                    全部 →
+                  </Link>
+                </div>
+                {agenda.map((item, i) => {
+                  const href = item.kind === "task" && item.taskId
+                    ? `/task/${item.taskId}?cwd=${encodeURIComponent(project.cwd)}`
+                    : `/board/${item.caseId}?cwd=${encodeURIComponent(project.cwd)}`;
+                  return (
+                    <Link
+                      key={`${item.kind}-${i}`}
+                      href={href}
+                      className="mju-entry-agenda"
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "64px 1fr auto",
+                        gap: 14,
+                        padding: "9px 0",
+                        borderBottom: "1px solid var(--border)",
+                        alignItems: "baseline",
+                        textDecoration: "none",
+                        color: "var(--text)",
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: 11,
+                          color: "var(--text-dim)",
+                          fontVariantNumeric: "tabular-nums",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {item.overdue
+                          ? (
+                            <span style={{ color: "var(--accent)", fontWeight: 700 }}>
+                              逾期 {overdueDays(item.date, todayStr)} 天
+                            </span>
+                          )
+                          : (
+                            <>
+                              {shortDate(item.date)}
+                              {item.time && <span style={{ display: "block", marginTop: 2 }}>{item.time}</span>}
+                            </>
+                          )}
+                      </span>
+                      <span
+                        className="mju-entry-agenda-title"
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 600,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          transition: "color .12s",
+                        }}
+                      >
+                        {item.title}
+                      </span>
+                      <span
+                        style={{
+                          ...micro,
+                          color: "var(--text-muted)",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          maxWidth: 140,
+                        }}
+                      >
+                        {item.caseTitle}
+                      </span>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
           </>
         )}
       </div>
+
+      {!activeConfig && (
+        <div
+          onMouseEnter={() => setHotActive(true)}
+          onMouseLeave={() => setHotActive(false)}
+          style={{
+            position: "fixed",
+            right: 0,
+            bottom: 0,
+            minWidth: 120,
+            height: 64,
+            display: "flex",
+            alignItems: "flex-end",
+            justifyContent: "flex-end",
+            padding: 14,
+            zIndex: 40,
+          }}
+        >
+          <span
+            aria-hidden
+            style={{
+              ...micro,
+              position: "absolute",
+              right: 14,
+              bottom: 14,
+              color: "var(--text-dim)",
+              opacity: hotActive ? 0 : 0.25,
+              transition: "opacity .2s",
+              pointerEvents: "none",
+            }}
+          >
+            · · ·
+          </span>
+          <div
+            style={{
+              display: "flex",
+              gap: 12,
+              opacity: hotActive ? 1 : 0,
+              transition: "opacity .2s",
+              pointerEvents: hotActive ? "auto" : "none",
+            }}
+          >
+            {configButtons.map((b) => {
+              const disabled = Boolean(b.needsProject && !project);
+              return (
+                <button
+                  key={b.id}
+                  type="button"
+                  className="mju-entry-cfg"
+                  disabled={disabled}
+                  onClick={() => setActiveConfig(b.id)}
+                  style={{
+                    ...micro,
+                    border: "none",
+                    background: "transparent",
+                    padding: 0,
+                    color: "var(--text-muted)",
+                    cursor: disabled ? "default" : "pointer",
+                    opacity: disabled ? 0.3 : 1,
+                    transition: "color .15s",
+                  }}
+                >
+                  {b.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {activeConfig === "models" && <ModelsConfig onClose={() => setActiveConfig(null)} />}
+      {activeConfig === "skills" && project && (
+        <SkillsConfig cwd={project.cwd} onClose={() => setActiveConfig(null)} />
+      )}
+      {activeConfig === "agents" && (
+        <SubagentsConfig cwd={project?.cwd ?? null} onClose={() => setActiveConfig(null)} />
+      )}
+      {activeConfig === "plugins" && project && (
+        <PluginsConfig cwd={project.cwd} sessionId={null} onClose={() => setActiveConfig(null)} />
+      )}
+      {activeConfig === "theme" && <ThemeConfig onClose={() => setActiveConfig(null)} />}
     </div>
   );
 }

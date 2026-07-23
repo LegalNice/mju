@@ -313,7 +313,10 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
                       transition: "border-color .12s",
                       ...(isNew
                         ? {
-                            borderLeft: "3px solid var(--accent)",
+                            // inset box-shadow instead of borderLeft: mixing border
+                            // shorthand with border-left longhand trips React's
+                            // style-conflict warning on rerender.
+                            boxShadow: "inset 3px 0 0 var(--accent)",
                             animation: "mju-card-in .55s cubic-bezier(.16,1,.3,1) both",
                           }
                         : {}),

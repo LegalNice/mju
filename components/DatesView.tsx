@@ -619,7 +619,9 @@ export function DatesView() {
                         style={{
                           display: "block",
                           border: "1px solid var(--border)",
-                          borderLeft: `3px solid ${KIND_TICK[item.kind]}`,
+                          // inset shadow, not borderLeft — never conflicts with
+                          // the border shorthand (same React warning as CaseBoardView)
+                          boxShadow: `inset 3px 0 0 ${KIND_TICK[item.kind]}`,
                           borderRadius: 2,
                           padding: "6px 8px",
                           marginTop: 6,
