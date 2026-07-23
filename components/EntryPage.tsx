@@ -175,7 +175,7 @@ export function EntryPage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [modelLabel, setModelLabel] = useState<string | null>(null);
   const [agenda, setAgenda] = useState<AgendaItem[]>([]);
-  const [hotActive, setHotActive] = useState(false);
+  const [spotOn, setSpotOn] = useState(false);
   const [activeConfig, setActiveConfig] = useState<ConfigPanel | null>(null);
   const [launching, setLaunching] = useState(false);
   const [leaving, setLeaving] = useState(false);
@@ -183,6 +183,7 @@ export function EntryPage() {
 
   const detectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const spotRef = useRef<HTMLDivElement | null>(null);
 
   // Load projects once; prefer the persisted cwd when it still exists.
   useEffect(() => {
@@ -392,7 +393,6 @@ export function EntryPage() {
         .mju-entry-item:hover { background: var(--bg-hover); }
         .mju-entry-dates:hover { color: var(--accent); }
         .mju-entry-agenda:hover .mju-entry-agenda-title { color: var(--accent); }
-        .mju-entry-cfg:hover:not(:disabled) { color: var(--accent); }
       `}</style>
 
       <div style={{ width: "min(640px, 92vw)", display: "flex", flexDirection: "column" }}>
@@ -625,14 +625,91 @@ export function EntryPage() {
               )}
             </div>
 
+            {!activeConfig && (
+              <div
+                ref={spotRef}
+                onMouseMove={(e) => {
+                  const el = spotRef.current;
+                  if (!el) return;
+                  const rect = el.getBoundingClientRect();
+                  el.style.setProperty("--mx", `${e.clientX - rect.left}px`);
+                  el.style.setProperty("--my", `${e.clientY - rect.top}px`);
+                }}
+                onMouseEnter={() => setSpotOn(true)}
+                onMouseLeave={() => setSpotOn(false)}
+                style={{
+                  position: "relative",
+                  height: 28,
+                  marginTop: 14,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 20,
+                }}
+              >
+                {/* 底层：真实按钮，几乎不可见 */}
+                {configButtons.map((b) => {
+                  const disabled = Boolean(b.needsProject && !project);
+                  return (
+                    <button
+                      key={b.id}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => setActiveConfig(b.id)}
+                      style={{
+                        ...micro,
+                        fontFamily: "inherit",
+                        border: "none",
+                        background: "transparent",
+                        padding: 0,
+                        color: "var(--text-dim)",
+                        opacity: disabled ? 0.1 : 0.18,
+                        cursor: disabled ? "default" : "pointer",
+                      }}
+                    >
+                      {b.label}
+                    </button>
+                  );
+                })}
+                {/* 顶层：镜像文字，通过跟随光标的径向渐变 mask 照亮 */}
+                <div
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 20,
+                    pointerEvents: "none",
+                    opacity: spotOn ? 1 : 0,
+                    transition: "opacity .25s",
+                    WebkitMaskImage: "radial-gradient(circle 90px at var(--mx, -200px) var(--my, -200px), black 0%, transparent 100%)",
+                    maskImage: "radial-gradient(circle 90px at var(--mx, -200px) var(--my, -200px), black 0%, transparent 100%)",
+                  }}
+                >
+                  {configButtons.map((b) => (
+                    <span
+                      key={b.id}
+                      style={{
+                        ...micro,
+                        color: activeConfig === b.id ? "var(--accent)" : "var(--text)",
+                      }}
+                    >
+                      {b.label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {error && (
               <div style={{ marginTop: 12, textAlign: "center", fontSize: 12, color: "var(--accent)" }}>
                 {error}
               </div>
             )}
 
-            {agenda.length > 0 && (
-              <div style={{ marginTop: 24, textAlign: "left" }}>
+            <div style={{ marginTop: 24, textAlign: "left" }}>
                 <div
                   style={{
                     display: "flex",
@@ -720,80 +797,15 @@ export function EntryPage() {
                     </Link>
                   );
                 })}
+                {agenda.length === 0 && (
+                  <div style={{ padding: "12px 0", fontSize: 12, color: "var(--text-dim)" }}>
+                    暂无在办事项
+                  </div>
+                )}
               </div>
-            )}
           </>
         )}
       </div>
-
-      {!activeConfig && (
-        <div
-          onMouseEnter={() => setHotActive(true)}
-          onMouseLeave={() => setHotActive(false)}
-          style={{
-            position: "fixed",
-            right: 0,
-            bottom: 0,
-            minWidth: 120,
-            height: 64,
-            display: "flex",
-            alignItems: "flex-end",
-            justifyContent: "flex-end",
-            padding: 14,
-            zIndex: 40,
-          }}
-        >
-          <span
-            aria-hidden
-            style={{
-              ...micro,
-              position: "absolute",
-              right: 14,
-              bottom: 14,
-              color: "var(--text-dim)",
-              opacity: hotActive ? 0 : 0.25,
-              transition: "opacity .2s",
-              pointerEvents: "none",
-            }}
-          >
-            · · ·
-          </span>
-          <div
-            style={{
-              display: "flex",
-              gap: 12,
-              opacity: hotActive ? 1 : 0,
-              transition: "opacity .2s",
-              pointerEvents: hotActive ? "auto" : "none",
-            }}
-          >
-            {configButtons.map((b) => {
-              const disabled = Boolean(b.needsProject && !project);
-              return (
-                <button
-                  key={b.id}
-                  type="button"
-                  className="mju-entry-cfg"
-                  disabled={disabled}
-                  onClick={() => setActiveConfig(b.id)}
-                  style={{
-                    ...micro,
-                    border: "none",
-                    background: "transparent",
-                    padding: 0,
-                    color: "var(--text-muted)",
-                    cursor: disabled ? "default" : "pointer",
-                    opacity: disabled ? 0.3 : 1,
-                    transition: "color .15s",
-                  }}
-                >
-                  {b.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {activeConfig === "models" && <ModelsConfig onClose={() => setActiveConfig(null)} />}
       {activeConfig === "skills" && project && (
