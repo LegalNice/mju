@@ -1,12 +1,18 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createEmptyStore, touchStore, type MjuStore } from "./mju-models";
+import { mjuProjectDir } from "./mju-paths";
 
-const MJU_DIR = ".mju";
 const STORE_FILE = "store.json";
 
+/** Primary location: outside the workspace so the vault stays a pure document archive. */
 export function mjuDir(cwd: string): string {
-  return join(cwd, MJU_DIR);
+  return mjuProjectDir(cwd);
+}
+
+/** Legacy in-workspace location, read-only fallback for stores created by early versions. */
+function legacyStorePath(cwd: string): string {
+  return join(cwd, ".mju", STORE_FILE);
 }
 
 export function storePath(cwd: string): string {
@@ -14,7 +20,7 @@ export function storePath(cwd: string): string {
 }
 
 export function hasMjuProject(cwd: string): boolean {
-  return existsSync(storePath(cwd));
+  return existsSync(storePath(cwd)) || existsSync(legacyStorePath(cwd));
 }
 
 export function ensureMjuDir(cwd: string): void {
@@ -23,7 +29,9 @@ export function ensureMjuDir(cwd: string): void {
 }
 
 export function readStore(cwd: string): MjuStore | null {
-  const path = storePath(cwd);
+  // New location first; fall back to the legacy in-workspace store. The next
+  // writeStore() persists to the new location, completing the migration.
+  const path = existsSync(storePath(cwd)) ? storePath(cwd) : legacyStorePath(cwd);
   if (!existsSync(path)) return null;
   try {
     const raw = readFileSync(path, "utf8");

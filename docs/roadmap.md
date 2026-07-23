@@ -22,8 +22,8 @@ Obsidian 不是"可选同步目标"，而是**首选文件存储层**。Mju 在 
 1. **法律领域模型优先**：先定义 Client、Case、Task、Deadline、Schedule、Deliverable，再谈通用架构。
 2. **区分业务类型**：常年法律顾问（Advisory）和争议解决（Litigation）是两种工作流，不是同一种"项目"。
 3. **Obsidian 是主文件库**：案卷、材料、文书、模板仍在 Obsidian；Mju 不迁移数据，而是读取和增强。
-4. **Mju 元数据独立**：任务状态、Agent 指派、工作流进度存在 `.mju/` 或 `~/.mju/`，与 Obsidian 文件解耦。
-5. **可退回纯本地模式**：没有 Obsidian 时，Mju 用 `.mju/` 独立运行，保证可开源。
+4. **Mju 元数据独立**：任务状态、Agent 指派、工作流进度存在 `~/.mju/projects/<编码路径>/`，与 Obsidian 文件解耦。
+5. **可退回纯本地模式**：没有 Obsidian 时，Mju 元数据仍在 `~/.mju/`，文件存在项目目录，保证可开源。
 6. **小步验证**：每阶段跑 `tsc --noEmit`、`npm run lint`、dev server 手动点验。
 
 ---
@@ -136,7 +136,7 @@ interface Deliverable {
 ### 2.1 任务 API ✅
 
 - `app/api/tasks/route.ts`
-  - GET/POST/PATCH/DELETE，操作 `.mju/store.json` 中的 tasks
+  - GET/POST/PATCH/DELETE，操作 `~/.mju/projects/<编码路径>/store.json` 中的 tasks
   - 支持按 caseId、status、deadline 筛选
 - `app/api/deadlines/route.ts`：期限增删改查
 - `app/api/schedules/route.ts`：日程增删改查
@@ -173,7 +173,7 @@ interface Deliverable {
   - `chariot`：法律检索、任务执行、文件整理（默认 DeepSeek）
   - 保留用户自定义能力：可改名、可换模型、可加新 Agent
 - `app/api/agents/route.ts`
-  - 默认操作 `.mju/agents/*.md`
+  - 默认操作 `~/.mju/projects/<编码路径>/agents/*.md`
   - 保留可选同步到 Obsidian `.pi/agents/` 供 pi CLI 使用
 
 ### 3.2 工作流引擎 ✅
@@ -235,13 +235,13 @@ interface Deliverable {
 
 ### 5.1 纯本地模式
 
-- 当目录不是 Obsidian vault 时，Mju 自动切换到纯 `.mju/` 模式
-- 案卷数据存在 `.mju/store.json`，文件存在项目目录
+- 当目录不是 Obsidian vault 时，Mju 自动切换到纯本地模式
+- 案卷元数据存在 `~/.mju/projects/<编码路径>/store.json`，文件存在项目目录
 - 保证无 Obsidian 用户也能使用
 
 ### 5.2 配置外置
 
-- 把 LegalNice 特有的配置提取到 `.mju/config.json` 或 `~/.mju/config.json`：
+- 把 LegalNice 特有的配置提取到 `~/.mju/config.json`：
   - Obsidian 路径映射（`ops/cases/案卷` 等）
   - Agent 命名（Justice/Magician/Chariot）
   - 工作流模板
@@ -251,7 +251,7 @@ interface Deliverable {
 ### 5.3 清理与文档
 
 - 全局搜索替换 `LegalNice`、`pi-web` 残留
-- 更新 `docs/subagents.zh-CN.md`：说明 `.mju/agents/` 是默认位置
+- 更新 `docs/subagents.zh-CN.md`：说明 `~/.mju/projects/<编码路径>/agents/` 是默认位置
 - 新增 `docs/architecture.md`：法律领域模型、Obsidian 桥接、纯本地模式三层关系
 - 更新 `README.zh-CN.md`：说明 Obsidian 为推荐存储，非必需
 

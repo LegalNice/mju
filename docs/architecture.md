@@ -23,7 +23,7 @@
 ┌──────────────▼──────────────────────┐
 │  Storage Layer (文件存储)            │
 │  - Obsidian Vault (推荐)            │
-│  - 纯本地 .mju/ 模式 (无 Obsidian)   │
+│  - 纯本地模式 (无 Obsidian)         │
 │  - Markdown 文件、模板、案卷         │
 └─────────────────────────────────────┘
 ```
@@ -36,24 +36,24 @@
 
 1. Mju 启动时读取当前工作目录
 2. 如果是 Obsidian vault（存在 `.obsidian/`），扫描 `ops/cases/案卷/` 和 `ops/projects/活跃项目/`
-3. 案卷元数据写入 `.mju/store.json`
+3. 案卷元数据写入 `~/.mju/projects/<编码路径>/store.json`（库外存储，vault 保持纯文档）
 4. 案件文件（Markdown、材料）仍留在 Obsidian 原位置
 
 ### 任务数据
 
-1. 任务创建/状态变更时，写入 `.mju/store.json`
+1. 任务创建/状态变更时，写入 `~/.mju/projects/<编码路径>/store.json`
 2. 可选同步到 Obsidian 任务文件（未来实现）
 3. 任务执行通过 pi-subagents 调用对应 Agent
 
 ### 工作流数据
 
 1. `GET /api/workflows` 按案件类型列出可用工作流，并返回当前案件的启动状态
-2. `POST /api/workflows` 可先预览生成的任务，确认启动后将任务及 `workflowRuns` 写入 `.mju/store.json`
+2. `POST /api/workflows` 可先预览生成的任务，确认启动后将任务及 `workflowRuns` 写入库外 store.json
 3. 同一案件的同一工作流仅可启动一次，避免重复生成任务链
 
 ### Agent 配置
 
-1. 默认存储在 `.mju/agents/*.md`
+1. 默认存储在 `~/.mju/projects/<编码路径>/agents/*.md`
 2. 可选同步到 Obsidian `.pi/agents/` 供 pi CLI 使用
 3. 每个 Agent 可绑定模型、工具、技能、MCP
 
@@ -157,9 +157,10 @@ npm run lint
 
 ### 数据存储
 
-- 项目级数据：`<cwd>/.mju/store.json`
+- 项目级数据：`~/.mju/projects/<编码路径>/store.json`
+- Agent 定义：`~/.mju/projects/<编码路径>/agents/*.md`
 - 用户级配置：`~/.mju/config.json`（未来）
-- Agent 定义：`<cwd>/.mju/agents/*.md`
+- 兼容：早期版本的 `<cwd>/.mju/store.json` 仍可读，下次写入自动迁移到库外
 
 ---
 

@@ -8,7 +8,8 @@ import { join } from "node:path";
  */
 
 export function mjuRootDir(): string {
-  return join(homedir(), ".mju");
+  // MJU_HOME overrides the root (tests, portable installs).
+  return process.env.MJU_HOME ?? join(homedir(), ".mju");
 }
 
 /** Filesystem-safe, readable encoding of an absolute project path. */
