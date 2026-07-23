@@ -5,13 +5,14 @@ import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import type { Case, Task } from "@/lib/mju-models";
-import type { AgentMessage, AssistantMessage, ToolCallContent, UserMessage } from "@/lib/types";
+import type { SessionInfo, SessionTreeNode } from "@/lib/types";
 import type { CaseDocEntry } from "@/app/api/casedocs/route";
-import { normalizeToolCalls } from "@/lib/normalize";
-import { sendAgentCommand } from "@/lib/agent-client";
 import { encodeFilePathForApi } from "@/lib/file-paths";
+import { useGlobalKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { AppNav } from "./AppNav";
 import { MarkdownBody } from "./MarkdownBody";
+import { ChatWindow } from "./ChatWindow";
+import { BranchNavigator } from "./BranchNavigator";
 
 const MICRO: CSSProperties = {
   fontSize: 10,
@@ -24,38 +25,15 @@ const MONO: CSSProperties = {
   fontFamily: "var(--font-mono)",
 };
 
-interface AgentEvent {
-  type: string;
-  [key: string]: unknown;
-}
-
-interface SessionResponse {
-  context: {
-    messages: AgentMessage[];
-    entryIds: string[];
-  };
-}
-
-interface AgentStateResponse {
-  running?: boolean;
-  state?: {
-    isStreaming?: boolean;
-    isPromptRunning?: boolean;
-  };
-}
-
 interface FileReadResponse {
   content: string;
   language: string;
   size: number;
 }
 
-type ToolCallLine = { name: string; summary: string };
-
-type TimelineItem =
-  | { kind: "user"; text: string; key: string }
-  | { kind: "assistant"; text: string; key: string }
-  | { kind: "tools"; calls: ToolCallLine[]; key: string };
+interface SessionInfoResponse {
+  info?: { cwd?: string } | null;
+}
 
 function todayString(): string {
   const now = new Date();
@@ -80,68 +58,8 @@ function formatMtime(iso: string): string {
   return `${d.getMonth() + 1}-${d.getDate()} ${hh}:${mm}`;
 }
 
-function truncateSingleLine(text: string, max = 80): string {
-  const flat = text.replace(/\s+/g, " ").trim();
-  return flat.length > max ? `${flat.slice(0, max)}…` : flat;
-}
-
-function extractMessageText(message: Partial<AgentMessage>): string {
-  const content = (message as { content?: unknown }).content;
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  return content
-    .map((block) =>
-      block && typeof block === "object" && (block as { type?: string }).type === "text"
-        && typeof (block as { text?: unknown }).text === "string"
-        ? (block as { text: string }).text
-        : "")
-    .filter(Boolean)
-    .join("\n");
-}
-
-/** 从 toolCall input 里挑一个最有信息量的参数做一行摘要 */
-function summarizeToolInput(input: Record<string, unknown>): string {
-  const preferred = ["path", "file_path", "filePath", "command", "query", "pattern", "url", "prompt", "relPath"];
-  for (const key of preferred) {
-    const value = input[key];
-    if (typeof value === "string" && value.trim()) return truncateSingleLine(value);
-  }
-  for (const value of Object.values(input)) {
-    if (typeof value === "string" && value.trim()) return truncateSingleLine(value);
-  }
-  return "";
-}
-
-/** 把会话消息压成紧凑时间线：连续的 toolCall 归为一组 */
-function buildTimeline(messages: AgentMessage[]): TimelineItem[] {
-  const items: TimelineItem[] = [];
-  let seq = 0;
-  const nextKey = () => `t${seq++}`;
-
-  for (const raw of messages) {
-    const message = normalizeToolCalls(raw);
-    if (message.role === "user") {
-      const text = extractMessageText(message).trim();
-      if (text) items.push({ kind: "user", text, key: nextKey() });
-      continue;
-    }
-    if (message.role !== "assistant") continue;
-    let group: ToolCallLine[] | null = null;
-    for (const block of (message as AssistantMessage).content) {
-      if (block.type === "text" && block.text.trim()) {
-        items.push({ kind: "assistant", text: block.text.trim(), key: nextKey() });
-        group = null;
-      } else if (block.type === "toolCall") {
-        const call = block as ToolCallContent;
-        if (!group) {
-          group = [];
-          items.push({ kind: "tools", calls: group, key: nextKey() });
-        }
-        group.push({ name: call.toolName || "tool", summary: summarizeToolInput(call.input ?? {}) });
-      }
-    }
-  }
-  return items;
+function treeHasBranch(nodes: SessionTreeNode[]): boolean {
+  return nodes.some((n) => n.children.length > 1 || treeHasBranch(n.children));
 }
 
 function PulseSquare() {
@@ -163,6 +81,14 @@ function ErrorLine({ text }: { text: string }) {
   return <div style={{ fontSize: 12, color: "var(--accent)", marginTop: 12 }}>{text}</div>;
 }
 
+function CenteredNote({ text, accent }: { text: string; accent?: boolean }) {
+  return (
+    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <span style={{ ...MICRO, color: accent ? "var(--accent)" : "var(--text-dim)" }}>{text}</span>
+    </div>
+  );
+}
+
 export function TaskDetailView({ taskId }: { taskId: string }) {
   const searchParams = useSearchParams();
   const cwd = searchParams.get("cwd") ?? "";
@@ -171,8 +97,9 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
   const [cases, setCases] = useState<Case[] | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
 
-  const [messages, setMessages] = useState<AgentMessage[]>([]);
-  const [sessionError, setSessionError] = useState<string | null>(null);
+  // ChatWindow 需要合成 SessionInfo，其中 cwd 必须真实（@ 文件引用、消息内链接解析都依赖它）
+  const [sessionCwd, setSessionCwd] = useState<string | null>(null);
+  const [sessionInfoError, setSessionInfoError] = useState<string | null>(null);
 
   const [docs, setDocs] = useState<CaseDocEntry[] | null>(null);
   const [docsError, setDocsError] = useState<string | null>(null);
@@ -181,20 +108,23 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
   const [docContentError, setDocContentError] = useState<string | null>(null);
 
   const [runningSessionIds, setRunningSessionIds] = useState<Set<string>>(new Set());
-  const [agentRunning, setAgentRunning] = useState(false);
-  const [liveText, setLiveText] = useState("");
-  const [liveTools, setLiveTools] = useState<ToolCallLine[]>([]);
 
-  const [draft, setDraft] = useState("");
-  const [sending, setSending] = useState(false);
-  const [sendError, setSendError] = useState<string | null>(null);
+  // 分支导航：数据由 ChatWindow 经 onBranchDataChange 流出（同 AppShell）
+  const [branchTree, setBranchTree] = useState<SessionTreeNode[]>([]);
+  const [branchActiveLeafId, setBranchActiveLeafId] = useState<string | null>(null);
+  const [branchOpen, setBranchOpen] = useState(false);
+  const branchLeafChangeFnRef = useRef<((leafId: string | null) => void) | null>(null);
+  const branchBarRef = useRef<HTMLDivElement | null>(null);
 
-  const eventSourceRef = useRef<EventSource | null>(null);
-  const agentRunningRef = useRef(false);
-  const handleAgentEventRef = useRef<((event: AgentEvent) => void) | null>(null);
-  const composingRef = useRef(false);
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
+  const [forkError, setForkError] = useState<string | null>(null);
+
   const selectedPathRef = useRef<string | null>(null);
   selectedPathRef.current = selectedPath;
+
+  // Esc 中止运行中的 agent（ChatWindow 自己注册 abort handler，这里只挂全局监听）
+  useGlobalKeyboardShortcuts({});
 
   // ---------- 任务 / 案件 ----------
 
@@ -234,35 +164,68 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
   );
   const sessionId = task?.sessionId ?? null;
 
-  // ---------- 会话消息（工作流时间线） ----------
+  // 本地回写 task.sessionId（fork / 启动会话后调用，key 变化触发 ChatWindow 重挂载）
+  const bindSession = useCallback(
+    async (newSessionId: string): Promise<boolean> => {
+      const res = await fetch("/api/tasks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cwd, id: taskId, sessionId: newSessionId }),
+      });
+      if (!res.ok) return false;
+      const data = (await res.json()) as { task?: Task };
+      setTasks((prev) =>
+        prev?.map((t) => (t.id === taskId ? data.task ?? { ...t, sessionId: newSessionId } : t)) ?? prev,
+      );
+      return true;
+    },
+    [cwd, taskId],
+  );
 
-  const loadSessionMessages = useCallback(async (sid: string) => {
-    const params = new URLSearchParams({ deferThinking: "1", deferMedia: "1" });
-    const res = await fetch(`/api/sessions/${encodeURIComponent(sid)}?${params}`);
-    if (!res.ok) throw new Error(`sessions ${res.status}`);
-    const data = (await res.json()) as SessionResponse;
-    setMessages(data.context.messages.map((m) => normalizeToolCalls(m)));
-  }, []);
+  // ---------- 会话 cwd（合成 SessionInfo 用） ----------
 
   useEffect(() => {
     if (!sessionId) {
-      setMessages([]);
-      setSessionError(null);
+      setSessionCwd(null);
+      setSessionInfoError(null);
       return;
     }
     let cancelled = false;
-    setSessionError(null);
-    loadSessionMessages(sessionId).catch((e) => {
-      if (!cancelled) setSessionError(String(e));
-    });
+    setSessionCwd(null);
+    setSessionInfoError(null);
+    const params = new URLSearchParams({ deferThinking: "1", deferMedia: "1" });
+    fetch(`/api/sessions/${encodeURIComponent(sessionId)}?${params}`)
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`sessions ${res.status}`);
+        return (await res.json()) as SessionInfoResponse;
+      })
+      .then((data) => {
+        if (cancelled) return;
+        setSessionCwd(data.info?.cwd ?? cwd);
+      })
+      .catch((e) => {
+        if (!cancelled) setSessionInfoError(String(e));
+      });
     return () => {
       cancelled = true;
     };
-  }, [sessionId, loadSessionMessages]);
+  }, [sessionId, cwd]);
 
-  // ---------- 运行状态 ----------
+  const sessionInfo = useMemo<SessionInfo | null>(() => {
+    if (!sessionId || !sessionCwd) return null;
+    return {
+      id: sessionId,
+      cwd: sessionCwd,
+      path: "",
+      created: "",
+      modified: "",
+      messageCount: 0,
+      firstMessage: "",
+    };
+  }, [sessionId, sessionCwd]);
 
-  // 全局 running 集合：页面打开时会话可能已在别处运行
+  // ---------- 运行状态（running SSE 是唯一来源，右栏轮询以此为开关） ----------
+
   useEffect(() => {
     const source = new EventSource("/api/agent/running/events");
     source.onmessage = (e) => {
@@ -278,134 +241,79 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
     return () => source.close();
   }, []);
 
-  // 初次挂载时对齐一次会话实时状态（刷新页面恰逢运行中）
-  useEffect(() => {
-    if (!sessionId) return;
-    let cancelled = false;
-    fetch(`/api/agent/${encodeURIComponent(sessionId)}`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: AgentStateResponse | null) => {
-        if (cancelled || !data) return;
-        const busy = Boolean(data.running && data.state && (data.state.isStreaming || data.state.isPromptRunning));
-        if (busy) {
-          agentRunningRef.current = true;
-          setAgentRunning(true);
-        }
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [sessionId]);
+  const isRunning = Boolean(sessionId && runningSessionIds.has(sessionId));
 
-  const isRunning = agentRunning || (sessionId ? runningSessionIds.has(sessionId) : false);
+  // ---------- 分支导航回调 ----------
 
-  // ---------- 会话 SSE（实时时间线） ----------
-
-  const handleAgentEvent = useCallback(
-    (event: AgentEvent) => {
-      switch (event.type) {
-        case "agent_start":
-          agentRunningRef.current = true;
-          setAgentRunning(true);
-          setLiveText("");
-          setLiveTools([]);
-          break;
-        case "agent_end":
-        case "prompt_done":
-          if (!agentRunningRef.current) break;
-          agentRunningRef.current = false;
-          setAgentRunning(false);
-          setLiveText("");
-          setLiveTools([]);
-          if (sessionId) loadSessionMessages(sessionId).catch(() => {});
-          break;
-        case "message_start":
-        case "message_update": {
-          if (!agentRunningRef.current) break;
-          const msg = event.message as Partial<AgentMessage> | undefined;
-          if (!msg || msg.role !== "assistant") break;
-          const normalized = normalizeToolCalls(msg as AgentMessage) as AssistantMessage;
-          setLiveText(extractMessageText(normalized));
-          break;
-        }
-        case "message_end": {
-          if (!agentRunningRef.current) break;
-          const completed = event.message as AgentMessage | undefined;
-          if (!completed) break;
-          const normalized = normalizeToolCalls(completed);
-          if (normalized.role === "user") {
-            // 发送时已乐观插入，同文本的用户消息去重
-            const text = extractMessageText(normalized);
-            setMessages((prev) => {
-              const last = prev[prev.length - 1];
-              if (last?.role === "user" && extractMessageText(last) === text) return prev;
-              return [...prev, normalized];
-            });
-          } else {
-            setMessages((prev) => [...prev, normalized]);
-          }
-          setLiveText("");
-          setLiveTools([]);
-          break;
-        }
-        case "tool_execution_start": {
-          const name = (event.toolName as string | undefined) ?? "tool";
-          setLiveTools((prev) => [...prev, { name, summary: "" }]);
-          break;
-        }
-      }
+  const handleBranchDataChange = useCallback(
+    (tree: SessionTreeNode[], activeLeafId: string | null, onLeafChange: (leafId: string | null) => void) => {
+      setBranchTree(tree);
+      setBranchActiveLeafId(activeLeafId);
+      branchLeafChangeFnRef.current = onLeafChange;
     },
-    [sessionId, loadSessionMessages],
+    [],
   );
-  handleAgentEventRef.current = handleAgentEvent;
 
-  const connectEvents = useCallback((sid: string): Promise<EventSource> => {
-    const existing = eventSourceRef.current;
-    if (existing && existing.readyState === EventSource.OPEN) return Promise.resolve(existing);
-    if (existing) {
-      existing.close();
-      eventSourceRef.current = null;
-    }
-    const es = new EventSource(`/api/agent/${encodeURIComponent(sid)}/events`);
-    eventSourceRef.current = es;
-
-    return new Promise((resolve) => {
-      let settled = false;
-      const settle = () => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timeout);
-        resolve(es);
-      };
-      const timeout = setTimeout(settle, 5000);
-      es.onmessage = (e) => {
-        try {
-          const event = JSON.parse(e.data as string) as AgentEvent;
-          if (event.type === "connected") settle();
-          handleAgentEventRef.current?.(event);
-        } catch {
-          // 忽略畸形帧
-        }
-      };
-      es.onerror = () => {
-        // CLOSED 表示致命错误，不再自动重连；先放行，让发送方继续
-        if (es.readyState === EventSource.CLOSED) settle();
-      };
-    });
+  const handleBranchLeafChange = useCallback((leafId: string | null) => {
+    branchLeafChangeFnRef.current?.(leafId);
   }, []);
 
-  // 有 sessionId 就保持 SSE 常开：运行中推送时间线，也是追问前必须建立的连接
-  useEffect(() => {
-    if (!sessionId) return;
-    void connectEvents(sessionId);
-    return () => {
-      eventSourceRef.current?.close();
-      eventSourceRef.current = null;
-    };
-  }, [sessionId, connectEvents]);
+  const showBranchBar = branchTree.length > 0 && treeHasBranch(branchTree);
 
-  // ---------- 案件文档 ----------
+  // 点击分支条外部时收起下拉
+  useEffect(() => {
+    if (!branchOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (branchBarRef.current && !branchBarRef.current.contains(e.target as Node)) {
+        setBranchOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [branchOpen]);
+
+  // ---------- fork 回写 / 启动会话 ----------
+
+  const handleForked = useCallback(
+    (newSessionId: string) => {
+      void bindSession(newSessionId).then((ok) => {
+        setForkError(ok ? null : "fork 后回写任务失败");
+      });
+    },
+    [bindSession],
+  );
+
+  const handleStartSession = useCallback(async () => {
+    if (!currentCase || starting) return;
+    setStarting(true);
+    setStartError(null);
+    try {
+      const res = await fetch("/api/agent/new", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cwd: currentCase.vaultPath, type: "ensure_session" }),
+      });
+      if (!res.ok) throw new Error(`agent/new ${res.status}`);
+      const data = (await res.json()) as { sessionId?: string };
+      if (!data.sessionId) throw new Error("no sessionId");
+      const bound = await bindSession(data.sessionId);
+      if (!bound) throw new Error("bind failed");
+    } catch (e) {
+      setStartError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setStarting(false);
+    }
+  }, [currentCase, starting, bindSession]);
+
+  // 聊天中点击文件链接：若是案件文档则切到右栏预览，否则忽略
+  const handleOpenFile = useCallback(
+    (filePath: string) => {
+      if (docs?.some((d) => d.path === filePath)) setSelectedPath(filePath);
+    },
+    [docs],
+  );
+
+  // ---------- 案件文档（右栏） ----------
 
   const caseId = task?.caseId ?? null;
 
@@ -457,7 +365,7 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
     return () => clearInterval(timer);
   }, [isRunning, caseId, loadDocs, loadDocContent]);
 
-  // 运行结束后再做一次最终刷新（覆盖 agent_end 与 running SSE 两条结束路径）
+  // 运行结束后再做一次最终刷新
   const prevRunningRef = useRef(false);
   useEffect(() => {
     if (prevRunningRef.current && !isRunning && caseId) {
@@ -468,40 +376,11 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
     prevRunningRef.current = isRunning;
   }, [isRunning, caseId, loadDocs, loadDocContent]);
 
-  // ---------- 追问 ----------
-
-  const handleSend = useCallback(async () => {
-    const message = draft.trim();
-    if (!message || !sessionId || isRunning || sending) return;
-    setSending(true);
-    setSendError(null);
-    try {
-      // 顺序与 useAgentSession 一致：先确保 SSE 已连接，再发 prompt
-      await connectEvents(sessionId);
-      setMessages((prev) => [...prev, { role: "user", content: message, timestamp: Date.now() } as UserMessage]);
-      await sendAgentCommand(sessionId, { type: "prompt", message });
-      setDraft("");
-    } catch (e) {
-      setSendError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSending(false);
-    }
-  }, [draft, sessionId, isRunning, sending, connectEvents]);
-
   // ---------- 渲染 ----------
-
-  const timeline = useMemo(() => buildTimeline(messages), [messages]);
-  const lastAssistantKey = useMemo(() => {
-    for (let i = timeline.length - 1; i >= 0; i--) {
-      if (timeline[i].kind === "assistant") return timeline[i].key;
-    }
-    return null;
-  }, [timeline]);
 
   const boardHref = task ? `/board/${task.caseId}?cwd=${encodeURIComponent(cwd)}` : undefined;
   const today = todayString();
   const overdue = Boolean(task?.deadline && task.deadline.slice(0, 10) < today && task.status !== "完成");
-  const composerDisabled = !sessionId || isRunning || sending;
 
   const shell = (content: React.ReactNode) => (
     <div
@@ -540,9 +419,61 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
     );
   }
 
+  const header = (
+    <div style={{ flexShrink: 0, borderBottom: "1px solid var(--border)", padding: "12px 16px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
+        <Link
+          href={boardHref ?? "/board"}
+          style={{ ...MICRO, color: "var(--text-muted)", textDecoration: "none" }}
+        >
+          ← {currentCase?.title ?? "返回看板"}
+        </Link>
+        {sessionId && (
+          <a
+            href={`/api/sessions/${encodeURIComponent(sessionId)}/export?inline=1`}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ ...MICRO, color: "var(--text-muted)", textDecoration: "none", flexShrink: 0 }}
+          >
+            导出
+          </a>
+        )}
+      </div>
+      <div style={{ marginTop: 10, fontSize: 16, fontWeight: 700, letterSpacing: "-0.01em" }}>
+        {task.title}
+      </div>
+      <div
+        style={{
+          ...MICRO,
+          color: "var(--text-dim)",
+          marginTop: 6,
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          flexWrap: "wrap",
+        }}
+      >
+        <span>{task.status}</span>
+        <span>{task.assignee}</span>
+        {task.deadline && (
+          <span style={{ color: overdue ? "var(--accent)" : undefined }}>
+            {formatDeadline(task.deadline)}
+            {overdue ? " · 已逾期" : ""}
+          </span>
+        )}
+        {isRunning && (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--accent)" }}>
+            <PulseSquare />
+            执行中
+          </span>
+        )}
+      </div>
+    </div>
+  );
+
   return shell(
     <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
-      {/* ============ 左栏：指令 + 工作流 + 追问 ============ */}
+      {/* ============ 左栏：任务信息 + 聊天 ============ */}
       <div
         style={{
           width: 400,
@@ -553,228 +484,84 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
           minHeight: 0,
         }}
       >
-        <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
-          {/* 返回 */}
-          <Link
-            href={boardHref ?? "/board"}
-            style={{
-              ...MICRO,
-              color: "var(--text-muted)",
-              textDecoration: "none",
-              display: "inline-block",
-            }}
-          >
-            ← {currentCase?.title ?? "返回看板"}
-          </Link>
+        {header}
 
-          {/* 标题 + meta */}
-          <div style={{ marginTop: 14, fontSize: 16, fontWeight: 700, letterSpacing: "-0.01em" }}>
-            {task.title}
-          </div>
-          <div
-            style={{
-              ...MICRO,
-              color: "var(--text-dim)",
-              marginTop: 8,
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              flexWrap: "wrap",
-            }}
-          >
-            <span>{task.status}</span>
-            <span>{task.assignee}</span>
-            {task.deadline && (
-              <span style={{ color: overdue ? "var(--accent)" : undefined }}>
-                {formatDeadline(task.deadline)}
-                {overdue ? " · 已逾期" : ""}
-              </span>
-            )}
-            {isRunning && (
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--accent)" }}>
-                <PulseSquare />
-                执行中
-              </span>
-            )}
-          </div>
-
-          {/* 指令 */}
-          <div
-            style={{
-              marginTop: 16,
-              padding: "12px 14px",
-              border: "1px solid var(--border)",
-              borderLeft: "3px solid var(--accent)",
-              borderRadius: 2,
-            }}
-          >
-            <span style={{ ...MICRO, color: "var(--accent)" }}>指令</span>
-            <p style={{ margin: "6px 0 0", fontSize: 13, whiteSpace: "pre-wrap" }}>
-              {task.originPrompt || task.detail}
-            </p>
-          </div>
-
-          {/* 工作流 */}
-          <div style={{ marginTop: 24 }}>
-            <div style={{ ...MICRO, color: "var(--text-dim)", paddingBottom: 8, borderBottom: "1px solid var(--border)" }}>
-              工作流
-            </div>
-
-            {!sessionId && (
-              <div style={{ padding: "12px 0", fontSize: 12, color: "var(--text-dim)" }}>
-                尚未关联会话
-              </div>
-            )}
-            {sessionError && <ErrorLine text={sessionError} />}
-
-            {timeline.map((item) => {
-              if (item.kind === "user") {
-                return (
-                  <div key={item.key} style={{ padding: "10px 0", borderBottom: "1px solid var(--border)" }}>
-                    <span style={{ ...MICRO, color: "var(--accent)" }}>用户</span>
-                    <p style={{ margin: "4px 0 0", fontSize: 13, whiteSpace: "pre-wrap" }}>{item.text}</p>
-                  </div>
-                );
-              }
-              if (item.kind === "assistant") {
-                const collapsed = item.key !== lastAssistantKey;
-                return (
-                  <div key={item.key} style={{ padding: "10px 0", borderBottom: "1px solid var(--border)" }}>
-                    <span style={{ ...MICRO, color: "var(--text-dim)" }}>{task.assignee}</span>
-                    <p
-                      style={{
-                        margin: "4px 0 0",
-                        fontSize: 13,
-                        color: "var(--text-muted)",
-                        whiteSpace: "pre-wrap",
-                        ...(collapsed
-                          ? {
-                            display: "-webkit-box",
-                            WebkitBoxOrient: "vertical",
-                            WebkitLineClamp: 3,
-                            overflow: "hidden",
-                          }
-                          : {}),
-                      }}
-                    >
-                      {item.text}
-                    </p>
-                  </div>
-                );
-              }
-              return (
-                <div key={item.key} style={{ padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
-                  {item.calls.map((call, i) => (
-                    <div
-                      key={`${item.key}-${i}`}
-                      style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "3px 0", minWidth: 0 }}
-                    >
-                      <span style={{ width: 6, height: 6, background: "var(--accent)", flexShrink: 0, alignSelf: "center" }} />
-                      <span style={{ ...MONO, fontSize: 11, fontWeight: 600, color: "var(--text)", flexShrink: 0 }}>
-                        {call.name}
-                      </span>
-                      {call.summary && (
-                        <span
-                          style={{
-                            ...MONO,
-                            fontSize: 11,
-                            color: "var(--text-dim)",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                            minWidth: 0,
-                          }}
-                        >
-                          {call.summary}
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              );
-            })}
-
-            {/* 实时部分 */}
-            {isRunning && (
-              <div style={{ padding: "10px 0" }}>
-                {liveText && (
-                  <p style={{ margin: "0 0 8px", fontSize: 13, color: "var(--text-muted)", whiteSpace: "pre-wrap" }}>
-                    {liveText}
-                  </p>
-                )}
-                {liveTools.map((call, i) => (
-                  <div key={`live-${i}`} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0" }}>
-                    <span style={{ width: 6, height: 6, background: "var(--accent)", flexShrink: 0 }} />
-                    <span style={{ ...MONO, fontSize: 11, fontWeight: 600, color: "var(--text)" }}>{call.name}</span>
-                  </div>
-                ))}
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
-                  <PulseSquare />
-                  <span style={{ ...MICRO, letterSpacing: "0.06em", color: "var(--accent)" }}>执行中</span>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* 追问输入 */}
-        <div style={{ flexShrink: 0, borderTop: "1px solid var(--border)", padding: "12px 16px" }}>
-          <div style={{ border: "1px solid var(--border)", borderRadius: 2, padding: "10px 12px" }}>
-            <textarea
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && !composingRef.current) {
-                  e.preventDefault();
-                  void handleSend();
-                }
-              }}
-              onCompositionStart={() => {
-                composingRef.current = true;
-              }}
-              onCompositionEnd={() => {
-                composingRef.current = false;
-              }}
-              placeholder={sessionId ? "追问或追加指令…" : "尚未关联会话，无法追问"}
-              disabled={composerDisabled}
-              rows={2}
-              style={{
-                width: "100%",
-                border: "none",
-                outline: "none",
-                resize: "none",
-                font: "inherit",
-                fontSize: 13,
-                background: "transparent",
-                color: "var(--text)",
-                display: "block",
-                padding: 0,
-              }}
-            />
-            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
-              <button
-                type="button"
-                onClick={() => void handleSend()}
-                disabled={composerDisabled || !draft.trim()}
-                style={{
-                  width: 28,
-                  height: 28,
-                  border: "none",
-                  borderRadius: 2,
-                  background: "var(--accent)",
-                  color: "white",
-                  fontSize: 15,
-                  lineHeight: 1,
-                  cursor: composerDisabled || !draft.trim() ? "not-allowed" : "pointer",
-                  opacity: composerDisabled || !draft.trim() ? 0.4 : 1,
-                }}
+        {sessionId ? (
+          <>
+            {showBranchBar && (
+              <div
+                ref={branchBarRef}
+                style={{ flexShrink: 0, height: 32, borderBottom: "1px solid var(--border)" }}
               >
-                →
-              </button>
+                <BranchNavigator
+                  tree={branchTree}
+                  activeLeafId={branchActiveLeafId}
+                  onLeafChange={handleBranchLeafChange}
+                  inline
+                  containerRef={branchBarRef}
+                  open={branchOpen}
+                  onToggle={() => setBranchOpen((v) => !v)}
+                  hasSession
+                />
+              </div>
+            )}
+            {forkError && <ErrorLine text={forkError} />}
+            {sessionInfoError && <ErrorLine text={sessionInfoError} />}
+            <div style={{ flex: 1, minHeight: 0 }}>
+              {sessionInfo ? (
+                <ChatWindow
+                  key={sessionId}
+                  session={sessionInfo}
+                  newSessionCwd={null}
+                  onSessionForked={handleForked}
+                  onBranchDataChange={handleBranchDataChange}
+                  onOpenFile={handleOpenFile}
+                />
+              ) : (
+                !sessionInfoError && (
+                  <div style={{ padding: 16 }}>
+                    <span style={{ ...MICRO, color: "var(--text-dim)" }}>加载中…</span>
+                  </div>
+                )
+              )}
             </div>
+          </>
+        ) : (
+          <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
+            <div
+              style={{
+                padding: "12px 14px",
+                border: "1px solid var(--border)",
+                borderLeft: "3px solid var(--accent)",
+                borderRadius: 2,
+              }}
+            >
+              <span style={{ ...MICRO, color: "var(--accent)" }}>指令</span>
+              <p style={{ margin: "6px 0 0", fontSize: 13, whiteSpace: "pre-wrap" }}>
+                {task.originPrompt || task.detail}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleStartSession()}
+              disabled={starting || !currentCase}
+              style={{
+                marginTop: 16,
+                padding: "8px 16px",
+                border: "none",
+                borderRadius: 2,
+                background: "var(--accent)",
+                color: "white",
+                cursor: starting || !currentCase ? "not-allowed" : "pointer",
+                opacity: starting || !currentCase ? 0.4 : 1,
+                ...MICRO,
+              }}
+            >
+              {starting ? "启动中…" : "启动会话"}
+            </button>
+            {startError && <ErrorLine text={startError} />}
           </div>
-          {sendError && <ErrorLine text={sendError} />}
-        </div>
+        )}
       </div>
 
       {/* ============ 右栏：文档列表 + 预览 ============ */}
@@ -867,13 +654,5 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
         </div>
       </div>
     </div>,
-  );
-}
-
-function CenteredNote({ text, accent }: { text: string; accent?: boolean }) {
-  return (
-    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <span style={{ ...MICRO, color: accent ? "var(--accent)" : "var(--text-dim)" }}>{text}</span>
-    </div>
   );
 }

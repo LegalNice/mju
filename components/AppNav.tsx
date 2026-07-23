@@ -12,7 +12,6 @@ export function AppNav({ boardHref }: { boardHref?: string }) {
   const items = [
     { label: "Board", href: boardHref ?? "/board", match: (p: string) => p.startsWith("/board") || p.startsWith("/task") },
     { label: "Dates", href: "/dates", match: (p: string) => p.startsWith("/dates") },
-    { label: "Sessions", href: "/sessions", match: (p: string) => p.startsWith("/sessions") },
   ];
   return (
     <header

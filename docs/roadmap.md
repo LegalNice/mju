@@ -227,6 +227,18 @@ interface Deliverable {
 
 ---
 
+## 第 3.6 阶段：/sessions 退役 ✅ 已完成
+
+旧聊天工作台（AppShell + SessionSidebar + FileExplorer/FileViewer/TabBar）整体下线：
+
+- 任务子页左栏升级为完整聊天：`TaskDetailView` 以合成 `SessionInfo` + `key={sessionId}` 挂载 `ChatWindow`（流式、工具详情、ChatInput 全套控制、音效），`BranchNavigator` inline 分支导航、`导出` 链接（`/api/sessions/[id]/export?inline=1`）；fork 自动 PATCH 回写任务的 sessionId 绑定
+- 无 sessionId 的任务可在子页「启动会话」（ensure_session + 绑定）
+- `/sessions` 变为重定向页：`?session=<id>` 经 `findTaskBySessionId()` 反查到任务则跳 `/task/[taskId]`，否则回 `/`
+- 进入页补项目初始化闭环（无项目/多项目选择器均可内联初始化，Obsidian vault 自动扫案卷）
+- 历史会话不提供任何 UI 入口（.jsonl 保留在磁盘）；随手聊统一归入「通用任务」收件箱
+
+---
+
 ## 第四阶段：交付物与 DOCX 生成 ⬜ 未开始
 
 ### 4.1 交付物管理

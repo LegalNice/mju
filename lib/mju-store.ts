@@ -1,7 +1,7 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createEmptyStore, touchStore, type Case, type MjuStore } from "./mju-models";
-import { mjuProjectDir } from "./mju-paths";
+import { mjuProjectDir, mjuRootDir } from "./mju-paths";
 
 const STORE_FILE = "store.json";
 
@@ -58,6 +58,29 @@ export function writeStore(cwd: string, store: MjuStore): void {
 
 export const INBOX_CASE_TITLE = "通用任务";
 export const INBOX_CASE_STAGE = "收件箱";
+
+/**
+ * Reverse-lookup a task by its bound pi session id across every initialized
+ * project. Used to redirect legacy /sessions?session=<id> links to the owning
+ * task page. Returns the project cwd and task, or null.
+ */
+export function findTaskBySessionId(sessionId: string): { cwd: string; taskId: string } | null {
+  const projectsRoot = join(mjuRootDir(), "projects");
+  if (!existsSync(projectsRoot)) return null;
+  for (const entry of readdirSync(projectsRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    try {
+      const raw = readFileSync(join(projectsRoot, entry.name, STORE_FILE), "utf8");
+      const store = JSON.parse(raw) as MjuStore;
+      if (!store.cwd || !Array.isArray(store.tasks)) continue;
+      const task = store.tasks.find((t) => t.sessionId === sessionId);
+      if (task) return { cwd: store.cwd, taskId: task.id };
+    } catch {
+      // unreadable or malformed store — skip
+    }
+  }
+  return null;
+}
 
 /**
  * Return the project's inbox case ("通用任务"), creating it — and its folder —

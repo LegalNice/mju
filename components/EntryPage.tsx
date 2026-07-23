@@ -163,6 +163,113 @@ async function readJson(res: Response): Promise<Record<string, unknown>> {
   return data;
 }
 
+/**
+ * Inline "initialize a project" form — a directory path input plus a submit
+ * button. On success the parent gets a ProjectSummary derived from the store
+ * and selects the project; backend errors surface inline in accent.
+ */
+function InitProjectForm({ onInitialized }: { onInitialized: (p: ProjectSummary) => void }) {
+  const [cwd, setCwd] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async () => {
+    const value = cwd.trim();
+    if (!value || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/projects/init", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cwd: value }),
+      });
+      const data = await readJson(res);
+      const store = data.store as {
+        cwd?: string;
+        projectName?: string;
+        cases?: unknown[];
+        isObsidianVault?: boolean;
+        updatedAt?: string;
+      };
+      onInitialized({
+        cwd: store.cwd ?? value,
+        name: store.projectName ?? value.split("/").filter(Boolean).pop() ?? "Mju 项目",
+        caseCount: store.cases?.length ?? 0,
+        isObsidianVault: Boolean(store.isObsidianVault),
+        updatedAt: store.updatedAt ?? new Date().toISOString(),
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <div
+          className="mju-entry-init"
+          style={{
+            flex: 1,
+            border: "1px solid var(--border)",
+            borderRadius: 2,
+            padding: "9px 12px",
+            transition: "border-color .15s",
+          }}
+        >
+          <input
+            value={cwd}
+            onChange={(e) => {
+              setCwd(e.target.value);
+              setError(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                void submit();
+              }
+            }}
+            disabled={busy}
+            placeholder="/path/to/your/vault"
+            style={{
+              width: "100%",
+              border: "none",
+              outline: "none",
+              font: "inherit",
+              fontSize: 12,
+              background: "transparent",
+              color: "var(--text)",
+            }}
+          />
+        </div>
+        <button
+          type="button"
+          className="mju-entry-initbtn"
+          onClick={() => void submit()}
+          disabled={busy || !cwd.trim()}
+          style={{
+            ...micro,
+            border: "1px solid var(--accent)",
+            borderRadius: 2,
+            background: "transparent",
+            color: "var(--accent)",
+            padding: "0 14px",
+            whiteSpace: "nowrap",
+            cursor: busy || !cwd.trim() ? "default" : "pointer",
+            opacity: busy || !cwd.trim() ? 0.4 : 1,
+          }}
+        >
+          {busy ? "…" : "初始化项目"}
+        </button>
+      </div>
+      {error && (
+        <div style={{ marginTop: 8, fontSize: 12, color: "var(--accent)" }}>{error}</div>
+      )}
+    </div>
+  );
+}
+
 export function EntryPage() {
   const router = useRouter();
 
@@ -176,6 +283,7 @@ export function EntryPage() {
   const [modelLabel, setModelLabel] = useState<string | null>(null);
   const [agenda, setAgenda] = useState<AgendaItem[]>([]);
   const [spotOn, setSpotOn] = useState(false);
+  const [initOpen, setInitOpen] = useState(false);
   const [activeConfig, setActiveConfig] = useState<ConfigPanel | null>(null);
   const [launching, setLaunching] = useState(false);
   const [leaving, setLeaving] = useState(false);
@@ -299,6 +407,11 @@ export function EntryPage() {
     return data.case as MjuCase;
   }, [project]);
 
+  const onProjectInitialized = (p: ProjectSummary) => {
+    setProjects((prev) => (prev && prev.some((x) => x.cwd === p.cwd) ? prev : [...(prev ?? []), p]));
+    setProject(p); // the project effect persists the cwd to localStorage
+  };
+
   const chipTitle = pinned?.kind === "case" ? pinned.value.title
     : pinned?.kind === "inbox" ? INBOX_TITLE
     : detected ? detected.title
@@ -393,6 +506,9 @@ export function EntryPage() {
         .mju-entry-item:hover { background: var(--bg-hover); }
         .mju-entry-dates:hover { color: var(--accent); }
         .mju-entry-agenda:hover .mju-entry-agenda-title { color: var(--accent); }
+        .mju-entry-init:focus-within { border-color: var(--accent); }
+        .mju-entry-initbtn:hover:not(:disabled) { background: var(--accent); color: #fff; }
+        .mju-entry-plus:hover { color: var(--accent); }
       `}</style>
 
       <div style={{ width: "min(640px, 92vw)", display: "flex", flexDirection: "column" }}>
@@ -406,14 +522,12 @@ export function EntryPage() {
         </div>
 
         {projects !== null && projects.length === 0 && (
-          <div style={{ marginTop: 36, textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>
-            尚未初始化任何 Mju 项目。请先到
-            {" "}
-            <Link href="/sessions" style={{ color: "var(--accent)", textDecoration: "underline", textUnderlineOffset: 3 }}>
-              Sessions
-            </Link>
-            {" "}
-            页面打开一个项目目录。
+          <div style={{ marginTop: 36 }}>
+            <div style={{ ...micro, color: "var(--text-dim)", marginBottom: 6 }}>初始化项目</div>
+            <div style={{ marginBottom: 10, fontSize: 12, color: "var(--text-muted)" }}>
+              输入一个目录路径作为 Mju 项目；Obsidian vault 会自动扫描导入案卷。
+            </div>
+            <InitProjectForm onInitialized={onProjectInitialized} />
           </div>
         )}
 
@@ -461,7 +575,37 @@ export function EntryPage() {
                   </button>
                 );
               })}
+              <button
+                type="button"
+                className="mju-entry-plus"
+                onClick={() => setInitOpen((v) => !v)}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  padding: "9px 12px",
+                  border: "none",
+                  borderTop: "1px solid var(--border)",
+                  background: "transparent",
+                  color: "var(--text-muted)",
+                  font: "inherit",
+                  ...micro,
+                  textAlign: "left",
+                  cursor: "pointer",
+                }}
+              >
+                + 初始化新项目
+              </button>
             </div>
+            {initOpen && (
+              <div style={{ marginTop: 12 }}>
+                <InitProjectForm
+                  onInitialized={(p) => {
+                    setInitOpen(false);
+                    onProjectInitialized(p);
+                  }}
+                />
+              </div>
+            )}
           </div>
         )}
 

@@ -44,7 +44,7 @@ app/
   board/[caseId]/page.tsx       per-case kanban (CaseBoardView)
   dates/page.tsx                global dates, list/week/month (DatesView)
   task/[taskId]/page.tsx        task detail (TaskDetailView)
-  sessions/page.tsx             chat workbench (AppShell, ?session= deep link)
+  sessions/page.tsx             legacy redirect: ?session=<id> → owning /task, else /
 app/api/
   sessions/route.ts               GET  list all sessions
   sessions/[id]/route.ts          GET/PATCH/DELETE session
@@ -100,27 +100,22 @@ lib/
   subagent-config-tool.ts configure_subagent custom tool — writes project agents to ~/.mju
 
 components/
-  AppNav.tsx          shared top nav (Board/Dates/Sessions) for workbench pages
-  EntryPage.tsx       / entry composer + case detection chip + launch transition
+  AppNav.tsx          shared top nav (Board/Dates) for workbench pages
+  EntryPage.tsx       / entry composer + case detection chip + launch transition + init-project form
   BoardIndex.tsx      /board redirect (localStorage mju-last-case → first active case)
   CaseBoardView.tsx   per-case kanban (3 columns, running pulse, case switcher)
   DatesView.tsx       global dates with list/week/month switchable views
-  TaskDetailView.tsx  task detail: prompt + workflow timeline | live doc preview
-  AppShell.tsx        chat workbench layout + URL state + tab management
-  SessionSidebar.tsx  session tree + FileExplorer
-  ChatWindow.tsx      chat composition + completion sound wrapper
+  TaskDetailView.tsx  task detail: full chat (embedded ChatWindow) | live doc preview
+  ChatWindow.tsx      self-contained chat unit (messages + input + minimap + sound)
   ChatInput.tsx       input bar + model/thinking/tools/compact controls
   MessageView.tsx     renders one message (user/assistant/toolCall/toolResult)
-  BranchNavigator.tsx in-session branch switcher
+  BranchNavigator.tsx in-session branch switcher (inline mode used by TaskDetailView)
   ChatMinimap.tsx     scroll minimap alongside the message list
   MarkdownBody.tsx    markdown renderer
-  ModelsConfig.tsx    modal for editing models.json (opened from sidebar bottom)
+  ModelsConfig.tsx    modal for editing models.json (entry-page config strip)
   PluginsConfig.tsx   modal for installed package plugins
   SkillsConfig.tsx    modal for loaded/search/installable skills
-  FileExplorer.tsx    file tree inside sidebar
   FileIcons.tsx       file icon helpers
-  FileViewer.tsx      file content in a tab
-  TabBar.tsx          tab bar (Chat + open file tabs)
 
 hooks/
   useAgentSession.ts  messages + streaming + SSE + fork/navigate/reconciliation logic
@@ -135,7 +130,8 @@ hooks/
 ## Key Design Decisions & Traps
 
 ### Workbench IA (entry → board → dates → task)
-- `/` is a full-bleed entry composer, not the chat UI — the chat workbench lives at `/sessions` (AppShell, `?session=` deep link preserved).
+- `/` is a full-bleed entry composer; the old `/sessions` chat workbench (AppShell + SessionSidebar + FileExplorer/FileViewer/TabBar) is **retired and deleted** — `app/sessions/page.tsx` only redirects legacy `?session=<id>` links to the owning task via `findTaskBySessionId()`.
+- The task detail page hosts the full chat: `TaskDetailView` mounts `<ChatWindow key={sessionId}>` with a synthesized minimal `SessionInfo` (the hook only reads id/cwd/name). Session load is mount-once — always remount via `key` when sessionId changes (fork included; fork also PATCHes the task's sessionId binding).
 - Entry launch binds task ↔ session: `POST /api/agent/new` with `cwd = case.vaultPath` (agent works inside the case folder), then `POST /api/tasks` with `cwd = project root` (store lives there) carrying `sessionId` + `originPrompt`. Two different cwds on purpose.
 - Unmatched instructions land in the "通用任务" inbox case (`ensureInboxCase` in `lib/mju-store.ts`, idempotent; folder `ops/inbox` for Obsidian vaults).
 - `localStorage` keys: `mju-last-case` ({cwd, caseId} — board/dates project resolution), `mju-entry-cwd` (entry project picker), `mju-dates-view` (list/week/month).

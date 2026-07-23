@@ -9,7 +9,7 @@ import { createJiti } from "jiti";
 process.env.MJU_HOME = mkdtempSync(join(tmpdir(), "mju-home-"));
 
 const jiti = createJiti(import.meta.url, { alias: { "@": process.cwd() } });
-const { initStore, readStore } = await jiti.import("../../lib/mju-store.ts");
+const { initStore, readStore, findTaskBySessionId } = await jiti.import("../../lib/mju-store.ts");
 const casesRoute = await jiti.import("./cases/route.ts");
 const tasksRoute = await jiti.import("./tasks/route.ts");
 const deadlinesRoute = await jiti.import("./deadlines/route.ts");
@@ -188,6 +188,20 @@ test("binds a session and origin prompt to a task via POST and PATCH", async (t)
     body: { cwd, caseId: caseItem.id, title: "坏类型", assignee: "auto", sessionId: 42 },
   });
   assert.equal(invalid.status, 400);
+});
+
+test("reverse-looks up a task by bound session id across projects", async (t) => {
+  const cwd = makeProject(t);
+  const caseItem = await createCase(cwd);
+  const created = await call(tasksRoute.POST, "/api/tasks", {
+    method: "POST",
+    body: { cwd, caseId: caseItem.id, title: "反查任务", assignee: "auto", sessionId: "sess-lookup-1" },
+  });
+  assert.equal(created.status, 200);
+
+  const found = findTaskBySessionId("sess-lookup-1");
+  assert.deepEqual(found, { cwd, taskId: created.body.task.id });
+  assert.equal(findTaskBySessionId("sess-nonexistent"), null);
 });
 
 test("creates the inbox case exactly once via ensure_inbox", async (t) => {
