@@ -1,6 +1,6 @@
 {
   "name": "mju",
-  "version": "0.7.16",
+  "version": "1.0.0",
   "description": "Mju Agents: a local-first browser workspace with a bundled Pi runtime and subagents",
   "license": "MIT",
   "engines": {
