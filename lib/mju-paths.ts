@@ -14,7 +14,9 @@ export function mjuRootDir(): string {
 
 /** Filesystem-safe, readable encoding of an absolute project path. */
 export function encodeProjectId(cwd: string): string {
-  return "-" + cwd.replaceAll("/", "-") + "-";
+  // Normalize trailing slashes so "/path" and "/path/" map to the same id.
+  const normalized = cwd.replace(/\/+$/, "");
+  return "-" + normalized.replaceAll("/", "-") + "-";
 }
 
 export function mjuProjectDir(cwd: string): string {

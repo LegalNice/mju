@@ -5,6 +5,9 @@ import { join } from "node:path";
 import test from "node:test";
 import { createJiti } from "jiti";
 
+// Point the mju root at a temp dir before importing modules that write stores.
+process.env.MJU_HOME = mkdtempSync(join(tmpdir(), "mju-home-"));
+
 const jiti = createJiti(import.meta.url, { alias: { "@": process.cwd() } });
 const { initStore, readStore } = await jiti.import("../../lib/mju-store.ts");
 const casesRoute = await jiti.import("./cases/route.ts");
