@@ -1,4 +1,5 @@
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import { isProviderDeleted } from "@/lib/provider-state";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,7 @@ export async function GET() {
   for (const provider of modelRuntime.getProviders()) {
     if (seen.has(provider.id)) continue;
     seen.add(provider.id);
+    const deleted = isProviderDeleted(provider.id);
     if (OAUTH_PROVIDER_IDS.has(provider.id) || !provider.auth.apiKey?.login) continue;
     const status = modelRuntime.getProviderAuthStatus(provider.id);
     // Skip providers whose key comes from models.json (those are custom providers)
@@ -30,8 +32,8 @@ export async function GET() {
     result.push({
       id: provider.id,
       displayName: provider.name,
-      configured: status.configured,
-      source: status.source,
+      configured: deleted ? false : status.configured,
+      source: deleted ? "deleted" : status.source,
       modelCount,
     });
   }

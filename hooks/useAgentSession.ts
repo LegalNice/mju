@@ -1203,6 +1203,16 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
     try {
       switch (commandName) {
+        case "agent": {
+          if (!args) return complete({ handled: true, error: "Usage: /agent <name> <task>" });
+          const split = args.match(/^(\S+)\s+([\s\S]+)$/);
+          const cwd = newSessionCwd ?? session?.cwd;
+          if (!split || !cwd) return complete({ handled: true, error: "Usage: /agent <name> <task> (需要先选择项目)" });
+          const response = await fetch("/api/board", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "run_inline", cwd, agent: split[1], title: split[2], detail: split[2] }) });
+          const data = await response.json() as { output?: string; error?: string };
+          if (!response.ok || data.error) return complete({ handled: true, error: data.error || "Subagent 执行失败" });
+          return complete({ handled: true, message: `Subagent ${split[1]} 已完成：${(data.output || "").slice(0, 240)}` });
+        }
         case "compact": {
           if (!sid || isCompacting) return complete({ handled: true, error: "No active session to compact" });
           setIsCompacting(true);
@@ -1264,7 +1274,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } finally {
       if (commandName === "compact") setIsCompacting(false);
     }
-  }, [addNotice, ensureNewSession, isCompacting, loadModels, loadSession, loadSlashCommands, loadTools, promoteNewSession, onSessionStatsPanelOpen]);
+  }, [addNotice, ensureNewSession, isCompacting, loadModels, loadSession, loadSlashCommands, loadTools, newSessionCwd, onSessionStatsPanelOpen, promoteNewSession, session?.cwd]);
 
   // Queued (undelivered) messages live in the queue panel only; the chat gets
   // the real user message when pi delivers it (user message_end event). An

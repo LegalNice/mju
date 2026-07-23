@@ -6,6 +6,28 @@ import { cacheSessionPath, invalidateSessionListCache } from "./session-reader";
 import type { SlashCommandInfo } from "@earendil-works/pi-coding-agent";
 import type { AgentSessionLike, ExtensionUiContextLike, ToolInfo } from "./pi-types";
 import type { ExtensionUiRequest, ExtensionUiResponse, ExtensionWidgetItem } from "./types";
+import { createSubagentConfigTool } from "./subagent-config-tool";
+import { getPiSubagentsPaths } from "./pi-runtime-paths";
+import { mjuProjectAgentsDir } from "./mju-paths";
+import { MJU_ORCHESTRATION_PROMPT } from "./mju-orchestration";
+import { delimiter as pathDelimiter } from "node:path";
+
+/**
+ * pi-subagents discovers extra user-scope agent dirs through
+ * PI_SUBAGENT_EXTRA_AGENT_DIRS (PATH-style). Register the current project's
+ * Mju agents dir so project agents stored outside the workspace are visible
+ * to the delegation tool. Accumulates across cwds; entries are read as
+ * user-scope, matching Mju's "one legal team across cases" model.
+ */
+function registerMjuAgentsDir(cwd: string): void {
+  const dir = mjuProjectAgentsDir(cwd);
+  const existing = (process.env.PI_SUBAGENT_EXTRA_AGENT_DIRS ?? "")
+    .split(pathDelimiter)
+    .filter(Boolean);
+  if (!existing.includes(dir)) {
+    process.env.PI_SUBAGENT_EXTRA_AGENT_DIRS = [...existing, dir].join(pathDelimiter);
+  }
+}
 
 // ============================================================================
 // Types
@@ -160,7 +182,7 @@ export class AgentSessionWrapper {
 
   beginExtensionBinding(options: ExtensionBindingOptions = {}): void {
     void this.ensureExtensionsBound(options).catch((err) => {
-      console.error("[pi-web] failed to dispatch session_start to extensions:", err instanceof Error ? err.message : err);
+      console.error("[mju] failed to dispatch session_start to extensions:", err instanceof Error ? err.message : err);
     });
   }
 
@@ -193,7 +215,7 @@ export class AgentSessionWrapper {
             id: randomUUID(),
             method: "notify",
             notifyType: "warning",
-            message: "Extension requested shutdown, but shutdown is not supported in pi-web.",
+            message: "Extension requested shutdown, but shutdown is not supported in Mju.",
           } as ExtensionUiRequest as AgentEvent),
           onError: (error) => this.emit({
             type: "extension_error",
@@ -207,7 +229,7 @@ export class AgentSessionWrapper {
       }
       this.extensionsBound = true;
       this.applyForcedEmptySystemPrompt();
-      console.log(`[pi-web] session_start dispatched to extensions for session ${this.inner.sessionId}`);
+      console.log(`[mju] session_start dispatched to extensions for session ${this.inner.sessionId}`);
     })().catch((err) => {
       this.extensionBindingError = err;
       throw err;
@@ -844,7 +866,7 @@ export class AgentSessionWrapper {
       get theme() { return PLAIN_TEXT_THEME; },
       getAllThemes: () => [],
       getTheme: () => undefined,
-      setTheme: () => ({ success: false, error: "Theme switching is not supported in pi-web extension UI yet" }),
+      setTheme: () => ({ success: false, error: "Theme switching is not supported in Mju extension UI yet" }),
       getToolsExpanded: () => false,
       setToolsExpanded: () => {},
     };
@@ -997,12 +1019,33 @@ export async function startRpcSession(
 
     // Build services first so extension-registered providers are available
     // before the SDK restores the saved model from the session file.
-    const services = await createAgentSessionServices({ cwd, agentDir });
+    registerMjuAgentsDir(cwd);
+    const subagentPaths = getPiSubagentsPaths();
+    const subagentResources = subagentPaths
+      ? {
+          additionalExtensionPaths: [subagentPaths.extension],
+          additionalSkillPaths: [subagentPaths.skills],
+          additionalPromptTemplatePaths: [subagentPaths.prompts],
+        }
+      : undefined;
+    const resourceLoaderOptions = {
+      ...(subagentResources ?? {}),
+      // Only teach delegation when the subagent tool can actually be loaded.
+      ...(subagentPaths ? { appendSystemPrompt: [MJU_ORCHESTRATION_PROMPT] } : {}),
+    };
+    const services = await createAgentSessionServices({ cwd, agentDir, resourceLoaderOptions });
+    let reloadAfterSubagentSave: () => Promise<void> = async () => {};
+    const configureSubagentTool = createSubagentConfigTool(cwd, () => reloadAfterSubagentSave());
     const { session: inner } = await createAgentSessionFromServices({
       services,
       sessionManager,
       ...(toolsOption !== undefined ? { tools: toolsOption } : {}),
+      customTools: [configureSubagentTool],
     });
+    reloadAfterSubagentSave = () => inner.reload();
+    if (toolNames?.length !== 0 && !inner.getActiveToolNames().includes("configure_subagent")) {
+      inner.setActiveToolsByName([...inner.getActiveToolNames(), "configure_subagent"]);
+    }
 
     // If specific tool names were requested (non-empty), set the active tools to the
     // requested builtin coding tools PLUS all extension/package tools, so installed

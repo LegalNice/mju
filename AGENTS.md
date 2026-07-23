@@ -3,7 +3,7 @@
 ## Quick Start
 
 ```bash
-npm run dev   # port 30141
+npm run dev   # port 30142
 ```
 
 Typecheck: `node_modules/.bin/tsc --noEmit`  
@@ -38,6 +38,13 @@ Browser                Next.js Server              AgentSession (in-process)
 ## File Map
 
 ```
+app/
+  page.tsx                      / — entry page (EntryPage)
+  board/page.tsx                /board — redirect to last case (BoardIndex)
+  board/[caseId]/page.tsx       per-case kanban (CaseBoardView)
+  dates/page.tsx                global dates, list/week/month (DatesView)
+  task/[taskId]/page.tsx        task detail (TaskDetailView)
+  sessions/page.tsx             legacy redirect: ?session=<id> → owning /task, else /
 app/api/
   sessions/route.ts               GET  list all sessions
   sessions/[id]/route.ts          GET/PATCH/DELETE session
@@ -52,6 +59,8 @@ app/api/
   auth/login/[provider]/route.ts  GET OAuth/device-code SSE | POST manual code
   auth/logout/[provider]/route.ts POST OAuth logout
   auth/providers/route.ts         GET OAuth provider list
+  casedocs/route.ts               GET ?cwd=&caseId= — case folder .md files, newest first
+  cases/route.ts                  GET/POST cases; POST {action:"ensure_inbox"} creates the inbox case
   cwd/validate/route.ts           POST validate/select a cwd
   default-cwd/route.ts            POST create ~/pi-cwd-YYYYMMDD
   files/[...path]/route.ts        GET file contents for viewer
@@ -60,9 +69,15 @@ app/api/
   models-config/route.ts          GET/PUT — read/write ~/.pi/agent/models.json
   models-config/test/route.ts     POST test a configured model/provider
   plugins/route.ts                GET/POST package plugin management
+  projects/route.ts               GET list initialized ~/.mju projects (decoded cwd, caseCount)
+  projects/init/route.ts          POST init project store (+ Obsidian vault scan)
   skills/route.ts                 GET/PATCH loaded skills and disable-model-invocation
   skills/install/route.ts         POST install skills through npx skills add
   skills/search/route.ts          GET/POST skills.sh search
+  tasks/route.ts                  GET/POST/PATCH/DELETE tasks (sessionId/originPrompt supported)
+  deadlines/route.ts              GET/POST/PATCH/DELETE deadlines
+  schedules/route.ts              GET/POST/PATCH/DELETE schedules
+  workflows/route.ts              GET/POST workflow preview/start
   worktrees/route.ts              GET/POST/DELETE git worktrees
 
 lib/
@@ -79,23 +94,28 @@ lib/
   types.ts            shared TypeScript types
   normalize.ts        normalizeToolCalls() — field name mismatch between file format and our types
   worktree.ts         project/worktree resolution and git worktree operations
+  mju-paths.ts        ~/.mju/ layout — Mju metadata lives outside the workspace
+  mju-orchestration.ts system-prompt guidance for auto subagent delegation
+  pi-runtime-paths.ts resolves bundled pi-subagents package paths (cwd-based fallback for Next/Turbopack)
+  subagent-config-tool.ts configure_subagent custom tool — writes project agents to ~/.mju
 
 components/
-  AppShell.tsx        layout + URL state + tab management
-  SessionSidebar.tsx  session tree + FileExplorer
-  ChatWindow.tsx      chat composition + completion sound wrapper
+  AppNav.tsx          shared top nav (Board/Dates) for workbench pages
+  EntryPage.tsx       / entry composer + case detection chip + launch transition + init-project form
+  BoardIndex.tsx      /board redirect (localStorage mju-last-case → first active case)
+  CaseBoardView.tsx   per-case kanban (3 columns, running pulse, case switcher)
+  DatesView.tsx       global dates with list/week/month switchable views
+  TaskDetailView.tsx  task detail: full chat (embedded ChatWindow) | live doc preview
+  ChatWindow.tsx      self-contained chat unit (messages + input + minimap + sound)
   ChatInput.tsx       input bar + model/thinking/tools/compact controls
   MessageView.tsx     renders one message (user/assistant/toolCall/toolResult)
-  BranchNavigator.tsx in-session branch switcher
+  BranchNavigator.tsx in-session branch switcher (inline mode used by TaskDetailView)
   ChatMinimap.tsx     scroll minimap alongside the message list
   MarkdownBody.tsx    markdown renderer
-  ModelsConfig.tsx    modal for editing models.json (opened from sidebar bottom)
+  ModelsConfig.tsx    modal for editing models.json (entry-page config strip)
   PluginsConfig.tsx   modal for installed package plugins
   SkillsConfig.tsx    modal for loaded/search/installable skills
-  FileExplorer.tsx    file tree inside sidebar
   FileIcons.tsx       file icon helpers
-  FileViewer.tsx      file content in a tab
-  TabBar.tsx          tab bar (Chat + open file tabs)
 
 hooks/
   useAgentSession.ts  messages + streaming + SSE + fork/navigate/reconciliation logic
@@ -108,6 +128,19 @@ hooks/
 ---
 
 ## Key Design Decisions & Traps
+
+### Workbench IA (entry → board → dates → task)
+- `/` is a full-bleed entry composer; the old `/sessions` chat workbench (AppShell + SessionSidebar + FileExplorer/FileViewer/TabBar) is **retired and deleted** — `app/sessions/page.tsx` only redirects legacy `?session=<id>` links to the owning task via `findTaskBySessionId()`.
+- The task detail page hosts the full chat: `TaskDetailView` mounts `<ChatWindow key={sessionId}>` with a synthesized minimal `SessionInfo` (the hook only reads id/cwd/name). Session load is mount-once — always remount via `key` when sessionId changes (fork included; fork also PATCHes the task's sessionId binding).
+- Entry launch binds task ↔ session: `POST /api/agent/new` with `cwd = case.vaultPath` (agent works inside the case folder), then `POST /api/tasks` with `cwd = project root` (store lives there) carrying `sessionId` + `originPrompt`. Two different cwds on purpose.
+- Unmatched instructions land in the "通用任务" inbox case (`ensureInboxCase` in `lib/mju-store.ts`, idempotent; folder `ops/inbox` for Obsidian vaults).
+- `localStorage` keys: `mju-last-case` ({cwd, caseId} — board/dates project resolution), `mju-entry-cwd` (entry project picker), `mju-dates-view` (list/week/month).
+
+### Chrome 150 selector-matching bug — avoid same-class ancestor selectors
+`body.dates .dates { … }` (ancestor and descendant sharing a class name) silently fails to match in Chrome 150 — reproduced in a minimal case and it cost us a "blank page" bug in `sketches/005-ia`. Rename state classes so ancestor/descendant class names never collide (e.g. `body.show-dates .dates`), or use inline styles like the components do.
+
+### Headless screenshots with SSE pages
+Pages holding an open `EventSource` (board/task/dates) deadlock Chrome's `--virtual-time-budget` and never produce a screenshot. Use `scripts/cdp-shot.mjs <url> <out> [settleMs] [clickText]` — a dependency-free CDP screenshotter (Node 22 built-in WebSocket) that waits a fixed settle time instead.
 
 ### AgentSession lifecycle (`lib/rpc-manager.ts`)
 - One `AgentSessionWrapper` per session id, keyed in `globalThis.__piSessions`
@@ -131,6 +164,15 @@ Pi stores toolCall blocks as `{type:"toolCall", id, name, arguments}` but `ToolC
 
 ### New session tool preset
 Tool names are passed at session creation (`POST /api/agent/new` → `toolNames[]`). For existing sessions, the active preset is inferred on mount via `get_tools` → `getPresetFromTools()`. When tools are fully disabled (`toolNames = []`), `rpc-manager.ts` passes an empty tool allow-list and forces `agent.state.systemPrompt = ""` after startup/reload/resource discovery.
+
+### pi-subagents must resolve from the project root
+`createRequire(import.meta.url)` fails under Next/Turbopack (the bundled URL points into `.next`), so `getPiSubagentsPaths()` in `lib/pi-runtime-paths.ts` falls back to `process.cwd()`. If the `subagent` tool ever goes missing from `get_tools`, check that resolution first — the main agent cannot delegate without it.
+
+### Mju metadata lives outside the workspace
+Project agent configs are stored in `~/.mju/projects/<encoded-cwd>/agents/` (see `lib/mju-paths.ts`), never inside the Obsidian vault. `rpc-manager.ts` registers that dir through `PI_SUBAGENT_EXTRA_AGENT_DIRS` so pi-subagents discovers them as user-scope agents. Legacy `<cwd>/.mju/agents` and `<cwd>/.pi/agents` are still read (lower precedence) and cleaned on DELETE.
+
+### Auto subagent delegation
+`lib/mju-orchestration.ts` holds the system-prompt section appended via `resourceLoaderOptions.appendSystemPrompt` (only when pi-subagents resolves). It tells the main agent to `subagent` list-then-delegate on substantial work without the user naming an agent. This is prompt-level routing, not a hard router — if a model still does everything itself, strengthen this text rather than adding code.
 
 ### Model defaults for new sessions
 `GET /api/models` returns `defaultModel` read from `~/.pi/agent/settings.json`. `ChatWindow` pre-selects this on mount for new sessions.

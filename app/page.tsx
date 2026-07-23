@@ -1,10 +1,10 @@
 import { Suspense } from "react";
-import { AppShell } from "@/components/AppShell";
+import { EntryPage } from "@/components/EntryPage";
 
 export default function Home() {
   return (
     <Suspense>
-      <AppShell />
+      <EntryPage />
     </Suspense>
   );
 }

@@ -65,6 +65,7 @@ interface Props {
   prevAssistantEntryId?: string;
   onEditContent?: (content: string) => void;
   showTimestamp?: boolean;
+  showDivider?: boolean;
   prevTimestamp?: number;
   sessionId?: string;
 }
@@ -96,12 +97,12 @@ function haveSameRelevantToolResults(
   return true;
 }
 
-export const MessageView = memo(function MessageView({ message, isStreaming, toolResults, modelNames, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, showTimestamp, prevTimestamp, sessionId }: Props) {
+export const MessageView = memo(function MessageView({ message, isStreaming, toolResults, modelNames, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, showTimestamp, showDivider, prevTimestamp, sessionId }: Props) {
   if (message.role === "user") {
-    return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} entryId={entryId} onFork={onFork} forking={forking} onNavigate={onNavigate} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} />;
+    return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} entryId={entryId} onFork={onFork} forking={forking} onNavigate={onNavigate} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} showDivider={showDivider} />;
   }
   if (message.role === "assistant") {
-    return <AssistantMessageView message={message as AssistantMessage} isStreaming={isStreaming} toolResults={toolResults} modelNames={modelNames} cwd={cwd} onOpenFile={onOpenFile} showTimestamp={showTimestamp} prevTimestamp={prevTimestamp} sessionId={sessionId} entryId={entryId} />;
+    return <AssistantMessageView message={message as AssistantMessage} isStreaming={isStreaming} toolResults={toolResults} modelNames={modelNames} cwd={cwd} onOpenFile={onOpenFile} showTimestamp={showTimestamp} showDivider={showDivider} prevTimestamp={prevTimestamp} sessionId={sessionId} entryId={entryId} />;
   }
   if (message.role === "toolResult") {
     // Rendered inline under its toolCall — skip standalone rendering if paired
@@ -109,9 +110,9 @@ export const MessageView = memo(function MessageView({ message, isStreaming, too
   }
   if (message.role === "custom") {
     if ((message as CustomMessage).customType === "compaction") {
-      return <CompactionMessageView message={message as CustomMessage} />;
+      return <CompactionMessageView message={message as CustomMessage} showDivider={showDivider} />;
     }
-    return <CustomMessageView message={message as CustomMessage} cwd={cwd} onOpenFile={onOpenFile} />;
+    return <CustomMessageView message={message as CustomMessage} cwd={cwd} onOpenFile={onOpenFile} showDivider={showDivider} />;
   }
   return null;
 }, (prev, next) => {
@@ -128,11 +129,12 @@ export const MessageView = memo(function MessageView({ message, isStreaming, too
     && prev.prevAssistantEntryId === next.prevAssistantEntryId
     && prev.onEditContent === next.onEditContent
     && prev.showTimestamp === next.showTimestamp
+    && prev.showDivider === next.showDivider
     && prev.prevTimestamp === next.prevTimestamp
     && prev.sessionId === next.sessionId;
 });
 
-function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent }: {
+function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, showDivider }: {
   message: UserMessage;
   cwd?: string;
   onOpenFile?: (filePath: string) => void;
@@ -142,6 +144,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
   onNavigate?: (entryId: string) => void;
   prevAssistantEntryId?: string;
   onEditContent?: (content: string) => void;
+  showDivider?: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -172,61 +175,16 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
 
   return (
     <div
-      style={{ marginBottom: 16, display: "flex", flexDirection: "column", alignItems: "flex-end" }}
+      style={{ padding: "14px 0", borderTop: showDivider ? "1px solid var(--border)" : "none" }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 6, maxWidth: "85%" }}>
-        <div
-          style={{
-            flex: 1,
-            minWidth: 0,
-            background: "var(--user-bg)",
-            border: "1px solid rgba(59,130,246,0.2)",
-            borderRadius: 12,
-            padding: "8px 12px",
-            fontSize: 14,
-            lineHeight: 1.6,
-            color: "var(--text)",
-            wordBreak: "break-word",
-          }}
-        >
-          {imageBlocks.length > 0 && (
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: content ? 8 : 0 }}>
-              {imageBlocks.map((img, i) => {
-                // lib/types.ts ImageContent uses {source:{type,data,media_type,url}}
-                // pi-ai on-disk format uses flat {data, mimeType} — handle both
-                const flat = img as unknown as { data?: string; mimeType?: string };
-                const src = img.source
-                  ? img.source.type === "base64"
-                    ? `data:${img.source.media_type};base64,${img.source.data}`
-                    : img.source.url ?? ""
-                  : flat.data
-                    ? `data:${flat.mimeType};base64,${flat.data}`
-                    : "";
-                return (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    key={i}
-                    src={src}
-                    alt=""
-                    style={{ maxWidth: 240, maxHeight: 240, borderRadius: 6, objectFit: "contain", display: "block", border: "1px solid rgba(59,130,246,0.15)" }}
-                  />
-                );
-              })}
-            </div>
-          )}
-          {content && <MarkdownBody className="markdown-user-message" cwd={cwd} onOpenFile={onOpenFile}>{content}</MarkdownBody>}
-        </div>
-
-      </div>
-
-      {/* Bottom row: action buttons + timestamp */}
-      {(time || canFork || canNavigate || true) && (
-        <div style={{
-          display: "flex", alignItems: "center", justifyContent: "flex-end",
-          gap: 6, marginTop: 3,
-        }}>
+      {/* Header row: role micro-label + hover actions + timestamp */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--accent)", flexShrink: 0 }}>
+          User
+        </span>
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
           <div style={{
             display: "flex", gap: 3,
             opacity: hovered ? 1 : 0,
@@ -240,7 +198,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
                 display: "flex", alignItems: "center", gap: 4,
                 padding: "3px 8px", height: 22,
                 background: "none", border: "none",
-                borderRadius: 5,
+                borderRadius: 2,
                 color: copied ? "var(--accent)" : "var(--text-dim)",
                 cursor: "pointer",
                 fontSize: 11, fontWeight: 400,
@@ -278,7 +236,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
                     display: "flex", alignItems: "center", gap: 4,
                     padding: "3px 8px", height: 22,
                     background: "none", border: "none",
-                    borderRadius: 5,
+                    borderRadius: 2,
                     color: "var(--text-dim)",
                     cursor: "pointer",
                     fontSize: 11, fontWeight: 400,
@@ -304,7 +262,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
                     display: "flex", alignItems: "center", gap: 4,
                     padding: "3px 8px", height: 22,
                     background: "none", border: "none",
-                    borderRadius: 5,
+                    borderRadius: 2,
                     color: forking ? "var(--accent)" : "var(--text-dim)",
                     cursor: forking ? "not-allowed" : "pointer",
                     fontSize: 11, fontWeight: 400,
@@ -325,9 +283,38 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
               )}
             </div>
           )}
-          {time && <span style={{ fontSize: 10, color: "var(--text-dim)" }}>{time}</span>}
+          {time && <span style={{ fontSize: 11, color: "var(--text-dim)", fontVariantNumeric: "tabular-nums" }}>{time}</span>}
         </div>
-      )}
+      </div>
+
+      <div style={{ fontSize: 14, lineHeight: 1.6, color: "var(--text)", wordBreak: "break-word" }}>
+        {imageBlocks.length > 0 && (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: content ? 8 : 0 }}>
+            {imageBlocks.map((img, i) => {
+              // lib/types.ts ImageContent uses {source:{type,data,media_type,url}}
+              // pi-ai on-disk format uses flat {data, mimeType} — handle both
+              const flat = img as unknown as { data?: string; mimeType?: string };
+              const src = img.source
+                ? img.source.type === "base64"
+                  ? `data:${img.source.media_type};base64,${img.source.data}`
+                  : img.source.url ?? ""
+                : flat.data
+                  ? `data:${flat.mimeType};base64,${flat.data}`
+                  : "";
+              return (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  key={i}
+                  src={src}
+                  alt=""
+                  style={{ maxWidth: 240, maxHeight: 240, borderRadius: 2, objectFit: "contain", display: "block", border: "1px solid var(--border)" }}
+                />
+              );
+            })}
+          </div>
+        )}
+        {content && <MarkdownBody className="markdown-user-message" cwd={cwd} onOpenFile={onOpenFile}>{content}</MarkdownBody>}
+      </div>
     </div>
   );
 }
@@ -340,6 +327,7 @@ function AssistantMessageView({
   cwd,
   onOpenFile,
   showTimestamp,
+  showDivider,
   prevTimestamp,
   sessionId,
   entryId,
@@ -351,6 +339,7 @@ function AssistantMessageView({
   cwd?: string;
   onOpenFile?: (filePath: string) => void;
   showTimestamp?: boolean;
+  showDivider?: boolean;
   prevTimestamp?: number;
   sessionId?: string;
   entryId?: string;
@@ -467,23 +456,26 @@ function AssistantMessageView({
 
   return (
     <div
-      style={{ marginBottom: 16 }}
+      style={{ padding: "14px 0", borderTop: showDivider ? "1px solid var(--border)" : "none" }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* Model label */}
+      {/* Header row: role micro-label + model name + streaming stats + timestamp */}
       <div
         style={{
-          fontSize: 11,
-          color: "var(--text-dim)",
-          marginBottom: 4,
           display: "flex",
           alignItems: "center",
-          gap: 6,
+          gap: 8,
+          marginBottom: 6,
         }}
       >
+        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--text-dim)", flexShrink: 0 }}>
+          Assistant
+        </span>
         {message.provider && (
-          <span>{modelNames?.[`${message.provider}:${message.model}`] ?? modelNames?.[message.model] ?? message.model}</span>
+          <span style={{ fontSize: 11, color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {modelNames?.[`${message.provider}:${message.model}`] ?? modelNames?.[message.model] ?? message.model}
+          </span>
         )}
         {isStreaming && (() => {
           let chars = 0;
@@ -507,7 +499,7 @@ function AssistantMessageView({
                   {tps !== null && (() => {
                     const bg = tps >= 50 ? "#53b3cb" : tps >= 30 ? "#9bc53d" : tps >= 15 ? "#f9c22e" : "#e01a4f";
                     return (
-                      <span style={{ marginLeft: 6, padding: "1px 6px", borderRadius: 4, background: bg, color: "#fff", fontSize: 11, fontWeight: 400 }}>
+                      <span style={{ marginLeft: 6, padding: "1px 6px", borderRadius: 2, background: bg, color: "#fff", fontSize: 11, fontWeight: 400 }}>
                         {tps.toFixed(1)} t/s
                       </span>
                     );
@@ -517,6 +509,9 @@ function AssistantMessageView({
             </>
           );
         })()}
+        {time && !isStreaming && (
+          <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-dim)", fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{time}</span>
+        )}
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -541,7 +536,7 @@ function AssistantMessageView({
               display: "flex", alignItems: "center", gap: 4,
               padding: "3px 8px", height: 22,
               background: "none", border: "none",
-              borderRadius: 5,
+              borderRadius: 2,
               color: copied ? "var(--accent)" : "var(--text-dim)",
               cursor: "pointer",
               fontSize: 11, fontWeight: 400,
@@ -565,9 +560,6 @@ function AssistantMessageView({
             )}
             {copied ? "Copied" : "Copy"}
           </button>
-        )}
-        {time && !isStreaming && (
-          <span style={{ fontSize: 10, color: "var(--text-dim)", marginLeft: "auto" }}>{time}</span>
         )}
       </div>
     </div>
@@ -630,9 +622,10 @@ function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex }: {
     <div
       style={{
         border: "1px solid var(--border)",
-        borderRadius: 6,
+        borderRadius: 2,
         overflow: "hidden",
         fontSize: 13,
+        background: "var(--tool-bg)",
       }}
     >
       <button
@@ -643,11 +636,12 @@ function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex }: {
           gap: 6,
           width: "100%",
           padding: "6px 10px",
-          background: "var(--bg-panel)",
+          background: "none",
           border: "none",
           color: "var(--text-muted)",
           cursor: "pointer",
-          fontSize: 12,
+          fontSize: 11,
+          fontFamily: "var(--font-mono)",
           textAlign: "left",
         }}
       >
@@ -664,7 +658,7 @@ function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex }: {
             fontSize: 12,
             lineHeight: 1.6,
             whiteSpace: "pre-wrap",
-            background: "var(--bg-panel)",
+            background: "var(--bg)",
             borderTop: "1px solid var(--border)",
           }}
         >
@@ -692,11 +686,11 @@ function ToolCallBlock({ block, result, duration }: { block: ToolCallContent; re
   return (
     <div
       style={{
-        borderRadius: 7,
+        borderRadius: 2,
         overflow: "hidden",
         fontSize: 12,
-        border: isError ? "1px solid rgba(248,113,113,0.45)" : "1px solid rgba(34,197,94,0.25)",
-        background: isError ? "rgba(248,113,113,0.05)" : "rgba(34,197,94,0.04)",
+        border: "1px solid var(--border)",
+        background: "var(--tool-bg)",
       }}
     >
       {/* ── Tool call header ── */}
@@ -712,12 +706,16 @@ function ToolCallBlock({ block, result, duration }: { block: ToolCallContent; re
           border: "none",
           color: "var(--text-muted)",
           cursor: "pointer",
-          fontSize: 12,
+          fontSize: 11,
+          fontFamily: "var(--font-mono)",
           textAlign: "left",
           minWidth: 0,
         }}
       >
-        <span style={{ color: isError ? "#f87171" : "#16a34a", fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: 11, flexShrink: 0 }}>
+        {isError && (
+          <span style={{ width: 6, height: 6, background: "var(--accent)", flexShrink: 0 }} />
+        )}
+        <span style={{ color: "var(--text)", fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: 11, flexShrink: 0 }}>
           {block.toolName}
         </span>
         <span style={{ color: "var(--text-dim)", fontFamily: "var(--font-mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
@@ -741,8 +739,8 @@ function ToolCallBlock({ block, result, duration }: { block: ToolCallContent; re
             fontSize: 12,
             lineHeight: 1.5,
             overflow: "auto",
-            background: "var(--bg-subtle)",
-            borderTop: isError ? "1px solid rgba(248,113,113,0.25)" : "1px solid rgba(34,197,94,0.2)",
+            background: "var(--bg)",
+            borderTop: "1px solid var(--border)",
             whiteSpace: "pre-wrap",
             wordBreak: "break-all",
           }}
@@ -779,7 +777,7 @@ function PairedDiffResult({ diff }: {
   return (
     <div
       style={{
-        borderTop: "1px solid rgba(34,197,94,0.15)",
+        borderTop: "1px solid var(--border)",
         background: "var(--bg)",
       }}
     >
@@ -1022,8 +1020,8 @@ function PairedResult({ text, isEmpty, isError }: {
   return (
     <div
       style={{
-        borderTop: `1px solid ${isError ? "rgba(248,113,113,0.3)" : "rgba(34,197,94,0.15)"}`,
-        background: isError ? "rgba(248,113,113,0.04)" : "var(--bg-subtle)",
+        borderTop: "1px solid var(--border)",
+        background: "var(--bg)",
       }}
     >
       <pre
@@ -1048,53 +1046,36 @@ function PairedResult({ text, isEmpty, isError }: {
   );
 }
 
-function CompactionMessageView({ message }: { message: CustomMessage }) {
+function CompactionMessageView({ message, showDivider }: { message: CustomMessage; showDivider?: boolean }) {
   const summary = getMessageText(message.content);
   const parsedSummary = useMemo(() => parseCompactionSummary(summary), [summary]);
   const time = formatTime(message.timestamp);
 
   return (
-    <div style={{ marginBottom: 16 }}>
+    <div style={{ padding: "14px 0", borderTop: showDivider ? "1px solid var(--border)" : "none" }}>
       <div
         style={{
-          border: "1px solid var(--border)",
-          borderRadius: 8,
-          overflow: "hidden",
-          background: "var(--bg)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 8,
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "7px 10px",
-            borderBottom: "1px solid var(--border)",
-            background: "var(--bg-panel)",
-            color: "var(--text-muted)",
-          }}
-        >
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 650 }}>
-            compaction
-          </span>
-          {time && <span style={{ marginLeft: "auto", color: "var(--text-dim)", fontSize: 10 }}>{time}</span>}
-        </div>
-
-        <div style={{ padding: "11px 13px 12px" }}>
-          <div style={{ color: "var(--text)", fontSize: 15, fontWeight: 700, lineHeight: 1.35 }}>
-            Conversation compacted
-          </div>
-          <div style={{ marginTop: 3, marginBottom: 10, color: "var(--text)", fontSize: 14, lineHeight: 1.5 }}>
-            The conversation history before this point was compacted into the following summary:
-          </div>
-          {parsedSummary.body ? (
-            <MarkdownBody className="markdown-compaction-message">{parsedSummary.body}</MarkdownBody>
-          ) : (
-            <span style={{ color: "var(--text-dim)", fontSize: 12 }}>(no summary)</span>
-          )}
-          <CompactionFileMetadata readFiles={parsedSummary.readFiles} modifiedFiles={parsedSummary.modifiedFiles} />
-        </div>
+        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--text-dim)" }}>
+          Compaction
+        </span>
+        {time && <span style={{ color: "var(--text-dim)", fontSize: 11, fontVariantNumeric: "tabular-nums" }}>{time}</span>}
       </div>
+
+      <div style={{ marginTop: 4, marginBottom: 10, textAlign: "center", color: "var(--text-dim)", fontSize: 11, lineHeight: 1.5 }}>
+        Conversation compacted — the history before this point was summarized:
+      </div>
+      {parsedSummary.body ? (
+        <MarkdownBody className="markdown-compaction-message">{parsedSummary.body}</MarkdownBody>
+      ) : (
+        <div style={{ textAlign: "center" }}><span style={{ color: "var(--text-dim)", fontSize: 12 }}>(no summary)</span></div>
+      )}
+      <CompactionFileMetadata readFiles={parsedSummary.readFiles} modifiedFiles={parsedSummary.modifiedFiles} />
     </div>
   );
 }
@@ -1129,7 +1110,7 @@ function CompactionFileList({ title, files }: { title: string; files: string[] }
   );
 }
 
-function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessage; cwd?: string; onOpenFile?: (filePath: string) => void }) {
+function CustomMessageView({ message, cwd, onOpenFile, showDivider }: { message: CustomMessage; cwd?: string; onOpenFile?: (filePath: string) => void; showDivider?: boolean }) {
   const isHiddenDisplay = message.display === false;
   const [contentExpanded, setContentExpanded] = useState(!isHiddenDisplay);
   const [detailsExpanded, setDetailsExpanded] = useState(false);
@@ -1149,144 +1130,129 @@ function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessag
   };
 
   return (
-    <div style={{ marginBottom: 16 }}>
+    <div style={{ padding: "14px 0", borderTop: showDivider ? "1px solid var(--border)" : "none", opacity: isHiddenDisplay && !contentExpanded ? 0.82 : 1 }}>
       <div
         style={{
-          border: "1px solid var(--border)",
-          borderRadius: 8,
-          overflow: "hidden",
-          background: isHiddenDisplay ? "var(--bg-subtle)" : "var(--bg)",
-          opacity: isHiddenDisplay && !contentExpanded ? 0.82 : 1,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 8,
         }}
       >
-        <div
+        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}>
+          {title}
+        </span>
+        {isHiddenDisplay && <span style={{ color: "var(--text-dim)", fontSize: 11 }}>hidden extension message</span>}
+        {time && <span style={{ color: "var(--text-dim)", fontSize: 11, fontVariantNumeric: "tabular-nums" }}>{time}</span>}
+      </div>
+
+      {contentExpanded ? (
+        <div style={{ marginTop: 8 }}>
+          {images.length > 0 && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: text ? 8 : 0 }}>
+              {images.map((img, i) => {
+                const src = imageSource(img);
+                if (!src) return null;
+                return (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    key={i}
+                    src={src}
+                    alt=""
+                    style={{ maxWidth: 240, maxHeight: 240, borderRadius: 2, objectFit: "contain", display: "block", border: "1px solid var(--border)" }}
+                  />
+                );
+              })}
+            </div>
+          )}
+          {text ? <MarkdownBody className="markdown-custom-message" cwd={cwd} onOpenFile={onOpenFile}>{text}</MarkdownBody> : <div style={{ textAlign: "center" }}><span style={{ color: "var(--text-dim)", fontSize: 12 }}>(no message)</span></div>}
+        </div>
+      ) : (
+        <button
+          onClick={() => setContentExpanded(true)}
           style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "7px 10px",
-            borderBottom: "1px solid var(--border)",
-            background: "var(--bg-panel)",
-            color: "var(--text-muted)",
-            fontSize: 12,
+            display: "block",
+            width: "100%",
+            marginTop: 4,
+            padding: "4px 0",
+            border: "none",
+            background: "transparent",
+            color: "var(--text-dim)",
+            cursor: "pointer",
+            fontSize: 11,
+            textAlign: "center",
           }}
         >
-          <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 650 }}>
-            {title}
-          </span>
-          {isHiddenDisplay && <span style={{ color: "var(--text-dim)", fontSize: 11 }}>hidden extension message</span>}
-          {time && <span style={{ marginLeft: "auto", color: "var(--text-dim)", fontSize: 10 }}>{time}</span>}
-        </div>
+          {text ? previewText(text) : "Show extension message"}
+        </button>
+      )}
 
-        {contentExpanded ? (
-          <div style={{ padding: "6px 9px" }}>
-            {images.length > 0 && (
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: text ? 8 : 0 }}>
-                {images.map((img, i) => {
-                  const src = imageSource(img);
-                  if (!src) return null;
-                  return (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      key={i}
-                      src={src}
-                      alt=""
-                      style={{ maxWidth: 240, maxHeight: 240, borderRadius: 6, objectFit: "contain", display: "block", border: "1px solid var(--border)" }}
-                    />
-                  );
-                })}
-              </div>
-            )}
-            {text ? <MarkdownBody className="markdown-custom-message" cwd={cwd} onOpenFile={onOpenFile}>{text}</MarkdownBody> : <span style={{ color: "var(--text-dim)", fontSize: 12 }}>(no message)</span>}
-          </div>
-        ) : (
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 8,
+          marginTop: 4,
+        }}
+      >
+        {text || detailsText ? (
           <button
-            onClick={() => setContentExpanded(true)}
+            onClick={copyContent}
             style={{
-              display: "block",
-              width: "100%",
-              padding: "8px 10px",
+              padding: "3px 7px",
               border: "none",
-              background: "transparent",
+              background: "none",
+              color: copied ? "var(--accent)" : "var(--text-dim)",
+              cursor: "pointer",
+              fontSize: 11,
+            }}
+          >
+            {copied ? "Copied" : "Copy"}
+          </button>
+        ) : null}
+        {(hasDetails || isHiddenDisplay) && (
+          <button
+            onClick={() => {
+              if (isHiddenDisplay) setContentExpanded((v) => !v);
+              else setDetailsExpanded((v) => !v);
+            }}
+            style={{
+              padding: "3px 7px",
+              border: "none",
+              background: "none",
               color: "var(--text-dim)",
               cursor: "pointer",
-              fontSize: 12,
-              textAlign: "left",
+              fontSize: 11,
             }}
           >
-            {text ? previewText(text) : "Show extension message"}
+            {isHiddenDisplay
+              ? (contentExpanded ? "Collapse" : "Expand")
+              : (detailsExpanded ? "Hide details" : "Show details")}
           </button>
         )}
+      </div>
 
-        <div
+      {hasDetails && ((isHiddenDisplay && contentExpanded) || (!isHiddenDisplay && detailsExpanded)) && (
+        <pre
           style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "4px 9px",
+            margin: "8px 0 0",
+            padding: "9px 10px",
             borderTop: "1px solid var(--border)",
-            background: "var(--bg-subtle)",
+            background: "var(--bg)",
+            color: "var(--text-muted)",
+            fontSize: 12,
+            lineHeight: 1.5,
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+            maxHeight: 360,
+            overflow: "auto",
+            fontFamily: "var(--font-mono)",
           }}
         >
-          {text || detailsText ? (
-            <button
-              onClick={copyContent}
-              style={{
-                padding: "3px 7px",
-                border: "none",
-                background: "none",
-                color: copied ? "var(--accent)" : "var(--text-dim)",
-                cursor: "pointer",
-                fontSize: 11,
-              }}
-            >
-              {copied ? "Copied" : "Copy"}
-            </button>
-          ) : null}
-          {(hasDetails || isHiddenDisplay) && (
-            <button
-              onClick={() => {
-                if (isHiddenDisplay) setContentExpanded((v) => !v);
-                else setDetailsExpanded((v) => !v);
-              }}
-              style={{
-                marginLeft: "auto",
-                padding: "3px 7px",
-                border: "none",
-                background: "none",
-                color: "var(--text-dim)",
-                cursor: "pointer",
-                fontSize: 11,
-              }}
-            >
-              {isHiddenDisplay
-                ? (contentExpanded ? "Collapse" : "Expand")
-                : (detailsExpanded ? "Hide details" : "Show details")}
-            </button>
-          )}
-        </div>
-
-        {hasDetails && ((isHiddenDisplay && contentExpanded) || (!isHiddenDisplay && detailsExpanded)) && (
-          <pre
-            style={{
-              margin: 0,
-              padding: "9px 10px",
-              borderTop: "1px solid var(--border)",
-              background: "var(--bg)",
-              color: "var(--text-muted)",
-              fontSize: 12,
-              lineHeight: 1.5,
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-              maxHeight: 360,
-              overflow: "auto",
-              fontFamily: "var(--font-mono)",
-            }}
-          >
-            {detailsText}
-          </pre>
-        )}
-      </div>
+          {detailsText}
+        </pre>
+      )}
     </div>
   );
 }

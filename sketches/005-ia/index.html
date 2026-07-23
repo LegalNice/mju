@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>Mju—Agents · IA 流程稿：归属识别 → 案件 Board → 全局 Dates</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, "PingFang SC", sans-serif;
+    color: #111; background: #fff; font-size: 14px; line-height: 1.55;
+    -webkit-font-smoothing: antialiased; overflow: hidden;
+  }
+  .micro { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+
+  header {
+    position: fixed; top: 0; left: 0; right: 0; height: 52px; z-index: 20;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 24px; border-bottom: 1px solid #e5e5e3; background: #fff;
+    transform: translateY(-100%); transition: transform .45s cubic-bezier(.16,1,.3,1) .25s;
+  }
+  body.app header { transform: translateY(0); }
+  .wordmark { font-weight: 700; font-size: 15px; cursor: pointer; }
+  .wordmark i { font-style: normal; color: #e30613; }
+  nav { display: flex; gap: 24px; }
+  nav a { color: #6b6b6b; cursor: pointer; }
+  nav a:hover, nav a.on { color: #111; }
+  nav a.on { text-decoration: underline; text-decoration-color: #e30613; text-underline-offset: 5px; text-decoration-thickness: 2px; }
+
+  /* ============ 进入页 ============ */
+  .entry {
+    position: fixed; inset: 0; z-index: 30; background: #fff;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 24px; transition: opacity .4s ease, transform .5s cubic-bezier(.16,1,.3,1);
+  }
+  body.app .entry { opacity: 0; transform: translateY(-24px); pointer-events: none; }
+  .hero-mark { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; }
+  .hero-mark i { font-style: normal; color: #e30613; }
+  .hero-sub { color: #a8a8a8; margin-top: 10px; }
+  .entry-composer { width: min(640px, 92vw); margin-top: 36px; border: 1px solid #e5e5e3; border-radius: 2px; padding: 16px; transition: border-color .15s; }
+  .entry-composer:focus-within { border-color: #e30613; }
+  .entry-composer textarea { width: 100%; border: none; outline: none; resize: none; font: inherit; background: transparent; min-height: 44px; }
+  .entry-bar { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+  .entry-bar .meta { color: #6b6b6b; font-size: 11px; letter-spacing: .06em; }
+  .send { width: 28px; height: 28px; border: none; border-radius: 2px; background: #e30613; color: #fff; font-size: 15px; cursor: pointer; }
+  .send:hover { background: #b30510; }
+  /* 归属识别 chip */
+  .detect {
+    margin-top: 14px; display: flex; align-items: center; gap: 10px; justify-content: center;
+    color: #6b6b6b; font-size: 11px; opacity: 0; transition: opacity .3s;
+  }
+  .detect.show { opacity: 1; }
+  .detect .case-name { font-weight: 700; color: #111; border-bottom: 2px solid #e30613; padding-bottom: 1px; }
+  .detect .change { color: #a8a8a8; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+  .detect .change:hover { color: #e30613; }
+
+  /* ============ 案件 Board ============ */
+  .workspace { position: fixed; inset: 52px 0 0 0; display: flex; min-height: 0; opacity: 0; transition: opacity .45s ease .45s; }
+  body.app .workspace { opacity: 1; }
+  .board { flex: 1; overflow-y: auto; padding: 28px; }
+  .board-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 22px; }
+  .case-switch { display: flex; align-items: baseline; gap: 10px; cursor: pointer; position: relative; }
+  .case-switch h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
+  .case-switch .caret-down { color: #a8a8a8; font-size: 11px; }
+  .case-menu {
+    position: absolute; top: 100%; left: 0; margin-top: 8px; width: 320px; background: #fff;
+    border: 1px solid #e5e5e3; border-radius: 2px; box-shadow: 0 24px 64px rgba(0,0,0,.18); z-index: 30;
+    display: none;
+  }
+  .case-menu.open { display: block; }
+  .case-menu .item { padding: 10px 14px; cursor: pointer; display: flex; justify-content: space-between; align-items: baseline; }
+  .case-menu .item:hover { background: #f5f5f4; }
+  .case-menu .item .n { font-size: 11px; color: #a8a8a8; }
+  .cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .col h2 { color: #a8a8a8; padding-bottom: 8px; border-bottom: 1px solid #e5e5e3; display: flex; justify-content: space-between; }
+  .card { border: 1px solid #e5e5e3; border-radius: 2px; padding: 12px 14px; margin-top: 10px; cursor: pointer; transition: border-color .12s; background: #fff; }
+  .card:hover { border-color: #111; }
+  .card.new { border-left: 3px solid #e30613; animation: card-in .55s cubic-bezier(.16,1,.3,1) .7s both; }
+  @keyframes card-in { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+  .card-title { font-weight: 600; font-size: 13px; }
+  .card-meta { color: #a8a8a8; font-size: 11px; margin-top: 5px; display: flex; justify-content: space-between; align-items: center; }
+  .tag { font-size: 10px; font-weight: 700; letter-spacing: .06em; padding: 2px 6px; border-radius: 2px; }
+  .tag-grey { background: #f5f5f4; color: #6b6b6b; }
+  .tag-red { background: rgba(227,6,19,.08); color: #e30613; }
+  .pulse { display: inline-block; width: 6px; height: 6px; background: #e30613; animation: pulse 1.2s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
+
+  /* ============ 全局 Dates 视图 ============ */
+  .dates { position: absolute; inset: 0; overflow-y: auto; padding: 28px; background: #fff; visibility: hidden; opacity: 0; transition: opacity .3s, visibility .3s; }
+  body.show-dates .dates { visibility: visible; opacity: 1; }
+  body.show-dates .board { visibility: hidden; opacity: 0; }
+  .dates-inner { max-width: 760px; margin: 0 auto; }
+  .dates h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; margin-bottom: 22px; }
+  .day-group { margin-bottom: 26px; }
+  .day-head { display: flex; justify-content: space-between; color: #a8a8a8; border-bottom: 2px solid #111; padding-bottom: 8px; }
+  .d-item { display: grid; grid-template-columns: 72px 1fr auto; gap: 14px; padding: 11px 0; border-bottom: 1px solid #e5e5e3; cursor: pointer; align-items: baseline; }
+  .d-item:hover .d-title { color: #e30613; }
+  .d-time { color: #a8a8a8; font-size: 11px; font-variant-numeric: tabular-nums; }
+  .d-title { font-weight: 600; font-size: 13px; transition: color .12s; }
+  .d-case { font-size: 10px; font-weight: 700; letter-spacing: .06em; color: #6b6b6b; border: 1px solid #e5e5e3; border-radius: 2px; padding: 2px 6px; white-space: nowrap; }
+  .d-item.overdue .d-time { color: #e30613; font-weight: 700; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wordmark" onclick="goHome()">Mju<i>—</i>Agents</div>
+  <nav class="micro">
+    <a id="navBoard" class="on" onclick="showBoard()">Board</a>
+    <a id="navDates" onclick="showDates()">Dates</a>
+    <a>Sessions</a><a>System</a>
+  </nav>
+</header>
+
+<!-- ================= 进入页 ================= -->
+<div class="entry">
+  <div class="hero-mark">Mju<i>—</i>Agents</div>
+  <div class="hero-sub micro">Local Agent Workbench</div>
+  <div class="entry-composer">
+    <textarea id="taskInput" oninput="detect()">帮我检索黄欢英案「个人未实际得利」的相关判例，输出检索报告。</textarea>
+    <div class="entry-bar">
+      <span class="meta">Chariot · GPT-5.6 Terra</span>
+      <button class="send" onclick="launch()">→</button>
+    </div>
+  </div>
+  <div class="detect" id="detectChip">
+    <span>识别为</span><span class="case-name" id="detectName">崇安公司 vs 黄欢英</span>
+    <span class="change" onclick="alert('弹出案件选择列表（示意）：可改派到其它案件或「通用任务」')">更改</span>
+  </div>
+</div>
+
+<!-- ================= Board + Dates ================= -->
+<div class="workspace">
+  <main class="board">
+    <div class="board-head">
+      <div class="case-switch" onclick="document.querySelector('.case-menu').classList.toggle('open')">
+        <h1>崇安公司 vs 黄欢英</h1><span class="caret-down">▾</span>
+        <div class="case-menu" onclick="event.stopPropagation()">
+          <div class="item" onclick="alert('切换到：兴众为 vs 厦门方航 的 board（示意）')"><span>兴众为 vs 厦门方航</span><span class="n">5 任务</span></div>
+          <div class="item" onclick="alert('切换到：常法-学知义 的 board（示意）')"><span>常法-学知义</span><span class="n">3 任务</span></div>
+          <div class="item" onclick="alert('切换到：通用任务（未归属收件箱）（示意）')"><span>通用任务</span><span class="n">2 任务</span></div>
+        </div>
+      </div>
+      <span class="micro" style="color:#a8a8a8">诉讼 · 收案阶段</span>
+    </div>
+    <div class="cols">
+      <section class="col">
+        <h2 class="micro"><span>待办</span><span>2</span></h2>
+        <div class="card"><div class="card-title">整理被告流水三性意见</div><div class="card-meta"><span>Justice</span><span class="tag tag-grey">7-25</span></div></div>
+        <div class="card"><div class="card-title">起草代理词框架</div><div class="card-meta"><span>Magician</span><span class="tag tag-grey">7-28</span></div></div>
+      </section>
+      <section class="col">
+        <h2 class="micro"><span>进行中</span><span>1</span></h2>
+        <div class="card new" onclick="alert('进入任务子页：左栏指令+工作流，右栏文档实时预览（同 004 稿）')">
+          <div class="card-title">黄欢英案「个人未实际得利」判例检索</div>
+          <div class="card-meta"><span>Chariot</span><span><span class="pulse"></span> <span class="tag tag-red">执行中</span></span></div>
+        </div>
+      </section>
+      <section class="col">
+        <h2 class="micro"><span>完成</span><span>2</span></h2>
+        <div class="card"><div class="card-title">主体资格与收款权分析</div><div class="card-meta"><span>Justice</span><span class="tag tag-grey">已完成</span></div></div>
+        <div class="card"><div class="card-title">案卷材料归档</div><div class="card-meta"><span>Chariot</span><span class="tag tag-grey">已完成</span></div></div>
+      </section>
+    </div>
+  </main>
+
+  <!-- ================= 全局 Dates ================= -->
+  <main class="dates">
+    <div class="dates-inner">
+      <h1>全局日程与期限</h1>
+
+      <div class="day-group">
+        <div class="day-head micro"><span>今天 · 7 月 23 日</span><span>2 项</span></div>
+        <div class="d-item overdue" onclick="backToCase()">
+          <span class="d-time">逾期 1 天</span>
+          <span class="d-title">「个人未实际得利」判例检索补强</span>
+          <span class="d-case">崇安公司 vs 黄欢英</span>
+        </div>
+        <div class="d-item" onclick="alert('跳到：常法-学知义 board（示意）')">
+          <span class="d-time">18:00</span>
+          <span class="d-title">顾问合同续签文本发客户确认</span>
+          <span class="d-case">常法-学知义</span>
+        </div>
+      </div>
+
+      <div class="day-group">
+        <div class="day-head micro"><span>7 月 25 日 · 周五</span><span>2 项</span></div>
+        <div class="d-item" onclick="backToCase()">
+          <span class="d-time">全天</span>
+          <span class="d-title">被告流水三性意见定稿</span>
+          <span class="d-case">崇安公司 vs 黄欢英</span>
+        </div>
+        <div class="d-item" onclick="alert('跳到：兴众为 vs 厦门方航 board（示意）')">
+          <span class="d-time">10:00</span>
+          <span class="d-title">举证期限届满</span>
+          <span class="d-case">兴众为 vs 厦门方航</span>
+        </div>
+      </div>
+
+      <div class="day-group">
+        <div class="day-head micro"><span>7 月 28 日 · 周一</span><span>1 项</span></div>
+        <div class="d-item" onclick="backToCase()">
+          <span class="d-time">09:30</span>
+          <span class="d-title">代理词框架讨论（内部会议）</span>
+          <span class="d-case">崇安公司 vs 黄欢英</span>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+  const body = document.body;
+  // 输入时模拟归属识别（出现 chip）
+  function detect() {
+    document.getElementById('detectChip').classList.add('show');
+  }
+  detect(); // 稿子里默认已有文本，直接展示
+  function launch() { body.classList.add('app'); }
+  function showDates() {
+    body.classList.add('show-dates');
+    document.getElementById('navDates').classList.add('on');
+    document.getElementById('navBoard').classList.remove('on');
+  }
+  function showBoard() {
+    body.classList.remove('show-dates');
+    document.getElementById('navBoard').classList.add('on');
+    document.getElementById('navDates').classList.remove('on');
+  }
+  function backToCase() { showBoard(); }
+  function goHome() { body.classList.remove('app', 'show-dates'); }
+  if (location.hash === '#board') body.classList.add('app');
+  if (location.hash === '#dates') { body.classList.add('app'); showDates(); }
+</script>
+</body>
+</html>

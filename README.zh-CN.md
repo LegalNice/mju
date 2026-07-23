@@ -1,36 +1,40 @@
-# pi-web
+# μ Mju Agents
 
 [English](./README.md)
 
-[pi 编程智能体](https://github.com/badlogic/pi-mono) 的本地网页界面。它会读取本机的 pi 会话文件，在浏览器里提供会话管理、实时对话、模型配置、技能管理和项目文件预览。
+[pi 编程智能体](https://github.com/badlogic/pi-mono) 的本地优先网页工作台。Mju Agents 读取本机 pi 会话文件，在浏览器里提供会话管理、实时对话、模型配置、技能与 MCP 管理、项目文件预览和可配置的 Subagent。
+
+它的设计目标是让会话文件和凭据留在用户自己的机器上。它不是法律意见服务，也不能替代专业律师审核。
+
+Mju Agents 已内置 Pi 运行时和 `pi-subagents`，用户不需要另外安装 `pi` CLI；只需要准备 Node.js。
 
 ## 快速开始
 
 **无需安装，直接运行：**
 
 ```bash
-npx @agegr/pi-web@latest
+npx mju@latest
 ```
 
 **或全局安装后使用：**
 
 ```bash
-npm install -g @agegr/pi-web
-pi-web
+npm install -g mju
+mju
 ```
 
-启动后打开 [http://localhost:30141](http://localhost:30141)。命令行版本会在服务就绪后尝试自动打开浏览器。
+启动后打开 [http://localhost:30142](http://localhost:30142)。命令会在服务就绪后尝试自动打开浏览器。
 
 **可选参数：**
 
 ```bash
-pi-web --port 8080              # 自定义端口
-pi-web --hostname 127.0.0.1     # 仅本机访问
-pi-web -p 8080 -H 127.0.0.1     # 组合使用
-pi-web --no-open                # 不自动打开浏览器
+mju --port 8080              # 自定义端口
+mju --hostname 127.0.0.1     # 仅本机访问
+mju -p 8080 -H 127.0.0.1     # 组合使用
+mju --no-open                # 不自动打开浏览器
 
-PORT=8080 pi-web                # 也支持环境变量
-PI_WEB_NO_OPEN=1 pi-web         # 适用于后台服务或开机自启
+PORT=8080 mju                   # 也支持环境变量
+MJU_NO_OPEN=1 mju               # 适用于后台服务或开机自启
 ```
 
 ## 功能介绍
@@ -41,15 +45,24 @@ PI_WEB_NO_OPEN=1 pi-web         # 适用于后台服务或开机自启
 - **边聊边看项目文件**：左侧浏览项目文件，右侧打开源码、文档、图片、音频和 PDF；文件变化会自动刷新，适合边让 agent 改边检查结果。
 - **随时掌握会话状态**：在顶部就能看到上下文占用、花费、压缩结果和系统提示，长会话不再像黑箱。
 - **少离开当前界面**：模型、登录/API key、模型测试和技能开关都能在网页里处理，配置 agent 时不用在多个工具之间来回切换。
+- **协作 Subagent**：可配置模型、思考强度、工具、技能、MCP 和 System Prompt，并通过任务看板分配工作。
+- **管理模型更清爽**：同一供应商可以添加多个账号，删除不再使用的供应商，并控制哪些模型出现在对话框中。
 
 ## 注意事项
 
-- **数据目录**：默认读取 `~/.pi/agent/sessions` 下的会话文件。可通过环境变量 `PI_CODING_AGENT_DIR` 指定其他 pi agent 目录。
+- **数据目录**：Mju 默认读取 `~/.pi/agent/sessions` 下的会话文件。可通过环境变量 `PI_CODING_AGENT_DIR` 指定其他 pi agent 目录。
 - **会话文件**：路径形如 `~/.pi/agent/sessions/<编码后的工作目录>/<时间戳>_<uuid>.jsonl`。
 - **模型配置**：Models 面板读写 pi agent 目录下的 `models.json`，模型列表和默认模型由 pi 的配置解析得到。
 - **文件访问**：文件浏览和预览面向当前选择的项目目录，以及会话中已出现过的工作目录。
-- **Git worktree**：什么时候显示切换器、新建目录在哪里、删除会影响什么，见 [pi-web 里的 Worktree](./docs/worktrees.zh-CN.md)。
+- **Git worktree**：什么时候显示切换器、新建目录在哪里、删除会影响什么，见 [Mju 里的 Worktree](./docs/worktrees.zh-CN.md)。
 - **Fork 与会话内分支不同**：Fork 会创建新的 `.jsonl` 文件；“Edit from here” 是同一会话文件里的分支。
+- **Subagent 与看板**：见 [Subagent 与任务看板](./docs/subagents.zh-CN.md)。
+- **开源隐私边界**：见 [开源发布与隐私边界](./docs/open-source-release.zh-CN.md)。
+
+## 规划与架构
+
+- **产品路线图**：见 [Mju Agents 法律工作台重构路线图](./docs/roadmap.md)。
+- **技术架构**：见 [Mju Agents 架构说明](./docs/architecture.md)。
 
 ## 开发
 
@@ -58,7 +71,7 @@ npm install
 npm run dev
 ```
 
-本地开发端口为 [http://localhost:30141](http://localhost:30141)。
+本地开发端口为 [http://localhost:30142](http://localhost:30142)。
 
 常用检查：
 
@@ -108,5 +121,5 @@ hooks/
   useDragDrop.ts      # 图片拖拽
   useTheme.ts         # 主题切换
 bin/
-  pi-web.js           # npm CLI 入口
+  mju.js              # npm CLI 入口
 ```

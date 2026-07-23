@@ -12,6 +12,7 @@ import { useAudio } from "@/hooks/useAudio";
 import { useDragDrop } from "@/hooks/useDragDrop";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import type { SessionStatsInfo } from "@/lib/pi-types";
+
 import {
   captureScrollDistance,
   getNextVisibleCount,
@@ -34,6 +35,7 @@ interface Props {
   onSessionStatsPanelOpen?: () => void;
   onContextUsageChange?: (usage: { percent: number | null; contextWindow: number; tokens: number | null } | null) => void;
   onOpenFile?: (filePath: string) => void;
+  onWorkspaceChange?: (cwd: string) => void;
 }
 
 function phaseLabel(phase: AgentPhase): string {
@@ -50,7 +52,7 @@ function phaseLabel(phase: AgentPhase): string {
 }
 
 const CHAT_MINIMAP_WIDTH = 36;
-const CHAT_COLUMN_PADDING = 16;
+const CHAT_COLUMN_PADDING = 24;
 const CHAT_INPUT_RIGHT_PADDING = CHAT_COLUMN_PADDING + CHAT_MINIMAP_WIDTH;
 
 function hasFinalAssistantAnswer(message: AgentMessage): boolean {
@@ -103,7 +105,7 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, children }: { messag
   if (toolCallCount > 0) parts.push(`${toolCallCount} ${toolCallCount === 1 ? "tool call" : "tool calls"}`);
 
   return (
-    <div style={{ marginBottom: 14 }}>
+    <div>
       <button
         type="button"
         aria-expanded={expanded}
@@ -111,16 +113,20 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, children }: { messag
         style={{
           display: "flex",
           alignItems: "center",
+          justifyContent: "center",
           gap: 8,
-          width: "auto",
+          width: "100%",
           minHeight: 24,
-          padding: "2px 0",
+          padding: "10px 0",
           border: "none",
           background: "transparent",
-          color: "var(--text-muted)",
+          color: "var(--text-dim)",
           cursor: "pointer",
-          fontSize: 12,
-          textAlign: "left",
+          fontSize: 11,
+          fontWeight: 700,
+          letterSpacing: ".1em",
+          textTransform: "uppercase",
+          textAlign: "center",
         }}
         title={expanded ? "Collapse process details" : "Expand process details"}
       >
@@ -132,7 +138,7 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, children }: { messag
         </span>
       </button>
       {expanded && (
-        <div style={{ marginTop: 8 }}>
+        <div style={{ padding: "2px 0 14px" }}>
           {children}
         </div>
       )}
@@ -140,7 +146,7 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, children }: { messag
   );
 }
 
-export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile }: Props) {
+export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, onWorkspaceChange }: Props) {
   const { soundEnabled, onSoundToggle, playDoneSound, unlockAudio } = useAudio();
   const isMobile = useIsMobile();
 
@@ -277,6 +283,30 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
 
   const isEmptyNew = isNew && messages.length === 0 && !streamState.isStreaming && !agentRunning;
   const messageCwd = session?.cwd ?? newSessionCwd ?? undefined;
+  const [workspacePickerBusy, setWorkspacePickerBusy] = useState(false);
+  const [workspacePickerError, setWorkspacePickerError] = useState<string | null>(null);
+
+  const handlePickWorkspace = useCallback(async () => {
+    if (workspacePickerBusy) return;
+    setWorkspacePickerBusy(true);
+    setWorkspacePickerError(null);
+    try {
+      const desktop = window.piDesktop;
+      const picked = desktop
+        ? await desktop.selectDirectory()
+        : await fetch("/api/cwd/pick", { method: "POST" }).then(async (res) => {
+            const data = await res.json().catch(() => ({})) as { cwd?: string; cancelled?: boolean; error?: string };
+            if (data.cancelled) return null;
+            if (!res.ok || !data.cwd) throw new Error(data.error ?? `HTTP ${res.status}`);
+            return data.cwd;
+          });
+      if (picked) onWorkspaceChange?.(picked);
+    } catch (error) {
+      setWorkspacePickerError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setWorkspacePickerBusy(false);
+    }
+  }, [onWorkspaceChange, workspacePickerBusy]);
 
   const availableThinkingLevels = displayModelValue
     ? (modelThinkingLevels[`${displayModelValue.provider}:${displayModelValue.modelId}`] ?? null)
@@ -354,24 +384,23 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
       onDrop={handleDrop}
     >
       {isDragOver && !agentRunning && (
-        <div className="pointer-events-none absolute inset-0 z-50 flex animate-[drop-zone-in_0.15s_ease_both] items-center justify-center bg-[rgba(37,99,235,0.06)] backdrop-blur-[1px]">
+        <div className="pointer-events-none absolute inset-0 z-50 flex animate-[drop-zone-in_0.15s_ease_both] items-center justify-center bg-[color-mix(in_srgb,var(--accent)_6%,transparent)] backdrop-blur-[1px]">
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
             {[0, 0.8, 1.6].map((delay) => (
               <div
                 key={delay}
-                className="absolute h-[720px] w-[720px] rounded-full border-[1.5px] border-solid border-[rgba(37,99,235,0.5)] animate-[drop-ripple_2.4s_ease-out_infinite_backwards]"
+                className="absolute h-[720px] w-[720px] rounded-full border-[1.5px] border-solid border-[color-mix(in_srgb,var(--accent)_50%,transparent)] animate-[drop-ripple_2.4s_ease-out_infinite_backwards]"
                 style={{ transformOrigin: "center", animationDelay: `${delay}s` }}
               />
             ))}
           </div>
           <svg
             width="280" height="280" viewBox="0 0 140 140" fill="none" xmlns="http://www.w3.org/2000/svg"
-            className="drop-shadow-[0_6px_18px_rgba(37,99,235,0.18)]"
           >
-            <rect x="28" y="44" width="84" height="60" rx="8" fill="rgba(37,99,235,0.08)" stroke="rgba(37,99,235,0.50)" strokeWidth="1.8"/>
-            <path d="M36 100 L54 72 L68 88 L80 74 L104 100Z" fill="rgba(37,99,235,0.16)" stroke="rgba(37,99,235,0.40)" strokeWidth="1.4" strokeLinejoin="round"/>
-            <circle cx="96" cy="58" r="8" fill="rgba(37,99,235,0.22)" stroke="rgba(37,99,235,0.55)" strokeWidth="1.6"/>
-            <g stroke="rgba(37,99,235,0.45)" strokeWidth="1.4" strokeLinecap="round">
+            <rect x="28" y="44" width="84" height="60" rx="8" fill="color-mix(in srgb, var(--accent) 8%, transparent)" stroke="color-mix(in srgb, var(--accent) 50%, transparent)" strokeWidth="1.8"/>
+            <path d="M36 100 L54 72 L68 88 L80 74 L104 100Z" fill="color-mix(in srgb, var(--accent) 16%, transparent)" stroke="color-mix(in srgb, var(--accent) 40%, transparent)" strokeWidth="1.4" strokeLinejoin="round"/>
+            <circle cx="96" cy="58" r="8" fill="color-mix(in srgb, var(--accent) 22%, transparent)" stroke="color-mix(in srgb, var(--accent) 55%, transparent)" strokeWidth="1.6"/>
+            <g stroke="color-mix(in srgb, var(--accent) 45%, transparent)" strokeWidth="1.4" strokeLinecap="round">
               <line x1="96" y1="46" x2="96" y2="43"/>
               <line x1="96" y1="70" x2="96" y2="73"/>
               <line x1="84" y1="58" x2="81" y2="58"/>
@@ -402,30 +431,32 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
       {isEmptyNew ? (
         <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-8">
           <div className="w-full max-w-[820px]">
-            <div
-              className="mb-3"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 12,
-                marginLeft: 16,
-                marginRight: 52,
-                fontFamily: "var(--font-mono)",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0, flex: 1, lineHeight: 1.4, overflow: "hidden" }}>
-                <span style={{ fontSize: 28, fontWeight: 700, letterSpacing: 0, color: "var(--text)", flexShrink: 0, whiteSpace: "nowrap" }}>π</span>
-                <span style={{ fontSize: 22, color: "var(--text)", fontWeight: 700, letterSpacing: 0, flexShrink: 0, whiteSpace: "nowrap" }}>Pi Agent Web</span>
+            <div style={{ width: "min(100%, 460px)", maxWidth: "100%", margin: "0 auto" }}>
+              <div
+                className="mb-3"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 12,
+                }}
+              >
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, minWidth: 0, lineHeight: 1.4 }}>
+                  <span style={{ fontSize: 24, color: "var(--text)", fontWeight: 700, letterSpacing: "-0.02em", textAlign: "center" }}>
+                    Mju<span style={{ color: "var(--accent)" }}>—</span>Agents
+                  </span>
+                  <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", color: "var(--text-dim)", textTransform: "uppercase" }}>
+                    Local Agent Workbench
+                  </span>
+                </div>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, flexShrink: 0 }}>
-                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                  web <span style={{ color: "var(--text)" }}>v{process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0"}</span>
-                </span>
-                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                  pi <span style={{ color: "var(--text)" }}>v{process.env.NEXT_PUBLIC_PI_VERSION ?? "0.0.0"}</span>
-                </span>
-              </div>
+              <button type="button" className="workspace-chip" title={workspacePickerError ?? "点击选择本地工作区"} onClick={() => void handlePickWorkspace()} disabled={workspacePickerBusy} style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box", margin: "0 auto 12px", cursor: workspacePickerBusy ? "wait" : "pointer", opacity: workspacePickerBusy ? 0.7 : 1 }}>
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M2.5 4.5h4l1.3 1.5h5.7v6.5h-11z" />
+                  <path d="M2.5 4.5V3.2h4.1l1.2 1.3" />
+                </svg>
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)", fontSize: 11 }}>{messageCwd ?? "未选择工作区"}</span>
+              </button>
             </div>
             <NoticeShelf notices={notices} align="right" />
             {chatInputElement}
@@ -445,13 +476,13 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
             pointerEvents: "none",
           }}
         >
-          <div style={{ maxWidth: 820, margin: "0 auto" }}>
+          <div style={{ maxWidth: 760, margin: "0 auto" }}>
             <NoticeShelf notices={notices} floating align="right" />
           </div>
         </div>
         <div ref={scrollContainerRef} className="flex-1 overflow-y-auto pt-4 [scrollbar-width:none]">
           <div style={{ padding: `0 ${CHAT_COLUMN_PADDING}px` }}>
-            <div style={{ maxWidth: 820, margin: "0 auto" }}>
+            <div style={{ maxWidth: 760, margin: "0 auto" }}>
               <ExtensionStatusBar statuses={extensionStatuses} />
               <ExtensionWidgets widgets={aboveEditorWidgets} />
 
@@ -481,7 +512,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
                 if (idx === lastUserIdx) { (lastUserMsgRef as { current: HTMLDivElement | null }).current = el; }
               };
 
-              const renderMessage = (idx: number, options: { attachRef?: boolean; keyPrefix?: string; messageOverride?: AgentMessage; showTimestamp?: boolean } = {}): ReactNode => {
+              const renderMessage = (idx: number, options: { attachRef?: boolean; keyPrefix?: string; messageOverride?: AgentMessage; showTimestamp?: boolean; showDivider?: boolean } = {}): ReactNode => {
                 const msg = options.messageOverride ?? messages[idx];
                 const prevAssistantEntryId =
                   msg.role === "user" && idx > 0 && messages[idx - 1].role === "assistant"
@@ -519,6 +550,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
                     prevAssistantEntryId={agentRunning ? undefined : prevAssistantEntryId}
                     onEditContent={handleEditContent}
                     showTimestamp={showTimestamp}
+                    showDivider={options.showDivider ?? false}
                     prevTimestamp={idx > 0 ? (messages[idx - 1] as AgentMessage & { timestamp?: number }).timestamp : undefined}
                     sessionId={session?.id ?? sessionIdRef.current ?? undefined}
                   />
@@ -535,7 +567,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
               for (let idx = 0; idx < messages.length;) {
                 const msg = messages[idx];
                 if (msg.role !== "user") {
-                  rendered.push(renderMessage(idx));
+                  rendered.push(renderMessage(idx, { showDivider: rendered.length > 0 }));
                   idx += 1;
                   continue;
                 }
@@ -548,7 +580,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
 
                 if (finalAssistantIdx === -1) {
                   for (let renderIdx = userIdx; renderIdx < endIdx; renderIdx++) {
-                    rendered.push(renderMessage(renderIdx));
+                    rendered.push(renderMessage(renderIdx, { showDivider: rendered.length > 0 }));
                   }
                   idx = endIdx;
                   continue;
@@ -557,13 +589,13 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
                 const isLiveTail = (agentRunning || streamState.isStreaming) && endIdx === messages.length && userIdx === lastUserIdx;
                 if (isLiveTail) {
                   for (let renderIdx = userIdx; renderIdx < endIdx; renderIdx++) {
-                    rendered.push(renderMessage(renderIdx));
+                    rendered.push(renderMessage(renderIdx, { showDivider: rendered.length > 0 }));
                   }
                   idx = endIdx;
                   continue;
                 }
 
-                rendered.push(renderMessage(userIdx));
+                rendered.push(renderMessage(userIdx, { showDivider: rendered.length > 0 }));
 
                 const processIndices: number[] = [];
                 for (let processIdx = userIdx + 1; processIdx < finalAssistantIdx; processIdx++) {
@@ -598,6 +630,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
                     <div
                       key={`process-group-${userIdx}-${finalAssistantIdx}`}
                       ref={processRefIdx === undefined ? undefined : (el) => { messageRefs.current[processRefIdx] = el; }}
+                      style={{ borderTop: rendered.length > 0 ? "1px solid var(--border)" : "none" }}
                     >
                       {processGroup}
                     </div>,
@@ -605,10 +638,10 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
                 }
 
                 if (finalAnswerMessage) {
-                  rendered.push(renderMessage(finalAssistantIdx, { messageOverride: finalAnswerMessage }));
+                  rendered.push(renderMessage(finalAssistantIdx, { messageOverride: finalAnswerMessage, showDivider: rendered.length > 0 }));
                 }
                 for (let renderIdx = finalAssistantIdx + 1; renderIdx < endIdx; renderIdx++) {
-                  rendered.push(renderMessage(renderIdx));
+                  rendered.push(renderMessage(renderIdx, { showDivider: rendered.length > 0 }));
                 }
                 idx = endIdx;
               }
@@ -616,7 +649,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
               return (
                 <>
                   {hasMore && (
-                    <div ref={sentinelRef} className="py-3 text-center text-xs text-text-muted">
+                    <div ref={sentinelRef} className="py-3 text-center" style={{ fontSize: 11, color: "var(--text-dim)" }}>
                       Scroll up to load earlier messages ({startIndex} hidden)
                     </div>
                   )}
@@ -625,11 +658,11 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
               );
             })()}
             {streamState.isStreaming && streamState.streamingMessage && (
-              <MessageView message={streamState.streamingMessage as AgentMessage} isStreaming modelNames={modelNames} cwd={messageCwd} onOpenFile={onOpenFile} />
+              <MessageView message={streamState.streamingMessage as AgentMessage} isStreaming modelNames={modelNames} cwd={messageCwd} onOpenFile={onOpenFile} showDivider={messages.length > 0} />
             )}
 
             {agentRunning && !streamState.streamingMessage && (
-              <div className="py-2 text-[13px] text-text-muted">
+              <div style={{ padding: "10px 0", textAlign: "center", fontSize: 11, color: "var(--text-dim)", borderTop: messages.length > 0 ? "1px solid var(--border)" : "none" }}>
                 <span className="animate-[pulse_1.5s_infinite]">{phaseLabel(agentPhase)}</span>
               </div>
             )}
@@ -659,7 +692,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
             paddingRight: isMobile ? CHAT_COLUMN_PADDING : CHAT_INPUT_RIGHT_PADDING,
           }}
         >
-          <div style={{ maxWidth: 820, margin: "0 auto" }}>
+          <div style={{ maxWidth: 760, margin: "0 auto" }}>
             <ExtensionWidgets widgets={belowEditorWidgets} />
           </div>
         </div>
@@ -685,7 +718,7 @@ function ExtensionStatusBar({ statuses }: { statuses: Array<{ key: string; text:
             maxWidth: "100%",
             padding: "4px 8px",
             border: "1px solid color-mix(in srgb, var(--accent) 24%, var(--border))",
-            borderRadius: 6,
+            borderRadius: 2,
             background: "color-mix(in srgb, var(--accent) 7%, var(--bg))",
             color: "var(--text-muted)",
             fontSize: 12,
@@ -708,7 +741,7 @@ function ExtensionWidgets({ widgets }: { widgets: Array<{ key: string; lines: st
           key={widget.key}
           style={{
             border: "1px solid var(--border)",
-            borderRadius: 7,
+            borderRadius: 2,
             background: "var(--bg-panel)",
             overflow: "hidden",
           }}
@@ -757,15 +790,12 @@ function NoticeShelf({ notices, floating = false, align = "left" }: { notices: N
               maxHeight: 60,
               marginBottom: index === notices.length - 1 ? 0 : 6,
               overflow: "hidden",
-              borderRadius: 14,
-              border: "1px solid color-mix(in srgb, var(--border) 70%, transparent)",
+              borderRadius: 2,
+              border: "1px solid var(--border)",
               background: "var(--bg)",
               color: "var(--text-muted)",
               width: "fit-content",
               maxWidth: "min(100%, 620px)",
-              boxShadow: floating
-                ? "0 1px 2px rgba(15,23,42,0.05), 0 10px 28px -14px rgba(15,23,42,0.24)"
-                : "0 1px 2px rgba(15,23,42,0.04), 0 8px 24px -12px rgba(15,23,42,0.10)",
               fontSize: 18,
               lineHeight: 1.45,
               transformOrigin: "top center",
@@ -836,7 +866,7 @@ function ExtensionDialog({
         style={{
           width: "min(560px, 100%)",
           border: "1px solid var(--border)",
-          borderRadius: 8,
+          borderRadius: 2,
           background: "var(--bg)",
           boxShadow: "0 20px 60px rgba(0,0,0,0.28)",
           overflow: "hidden",
@@ -860,7 +890,7 @@ function ExtensionDialog({
                   style={{
                     width: "100%",
                     padding: "9px 10px",
-                    borderRadius: 7,
+                    borderRadius: 2,
                     border: "1px solid var(--border)",
                     background: "var(--bg-panel)",
                     color: "var(--text)",
@@ -887,7 +917,7 @@ function ExtensionDialog({
               style={{
                 width: "100%",
                 padding: "9px 10px",
-                borderRadius: 7,
+                borderRadius: 2,
                 border: "1px solid var(--border)",
                 background: "var(--bg-panel)",
                 color: "var(--text)",
@@ -909,7 +939,7 @@ function ExtensionDialog({
                 width: "100%",
                 minHeight: 220,
                 padding: 10,
-                borderRadius: 7,
+                borderRadius: 2,
                 border: "1px solid var(--border)",
                 background: "var(--bg-panel)",
                 color: "var(--text)",
@@ -928,7 +958,7 @@ function ExtensionDialog({
             onClick={() => onRespond(request, { cancelled: true })}
             style={{
               padding: "6px 10px",
-              borderRadius: 6,
+              borderRadius: 2,
               border: "1px solid var(--border)",
               background: "var(--bg)",
               color: "var(--text-muted)",
@@ -942,7 +972,7 @@ function ExtensionDialog({
               onClick={submitValue}
               style={{
                 padding: "6px 10px",
-                borderRadius: 6,
+                borderRadius: 2,
                 border: "1px solid var(--accent)",
                 background: "var(--accent)",
                 color: "#fff",
@@ -956,7 +986,7 @@ function ExtensionDialog({
               onClick={submitValue}
               style={{
                 padding: "6px 10px",
-                borderRadius: 6,
+                borderRadius: 2,
                 border: "1px solid var(--accent)",
                 background: "var(--accent)",
                 color: "#fff",
@@ -1058,7 +1088,7 @@ function ExtensionCustomPanel({
           width: "min(920px, 100%)",
           maxHeight: "min(760px, calc(100vh - 40px))",
           border: "1px solid var(--border)",
-          borderRadius: 8,
+          borderRadius: 2,
           background: "var(--bg)",
           boxShadow: "0 20px 60px rgba(0,0,0,0.28)",
           overflow: "hidden",
@@ -1071,7 +1101,7 @@ function ExtensionCustomPanel({
             onClick={() => onInput(request, "\x03")}
             style={{
               padding: "5px 9px",
-              borderRadius: 6,
+              borderRadius: 2,
               border: "1px solid var(--border)",
               background: "var(--bg-panel)",
               color: "var(--text-muted)",

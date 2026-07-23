@@ -2,7 +2,7 @@
 
 import { useCallback, useSyncExternalStore } from "react";
 
-type Theme = "light" | "dark";
+export type ThemeName = "paper" | "night";
 
 const listeners = new Set<() => void>();
 
@@ -13,13 +13,14 @@ function subscribe(cb: () => void): () => void {
   };
 }
 
-function getSnapshot(): Theme {
-  if (typeof document === "undefined") return "light";
-  return document.documentElement.classList.contains("dark") ? "dark" : "light";
+function getSnapshot(): ThemeName {
+  if (typeof document === "undefined") return "paper";
+  if (document.documentElement.dataset.theme === "night") return "night";
+  return document.documentElement.classList.contains("dark") ? "night" : "paper";
 }
 
-function getServerSnapshot(): Theme {
-  return "light";
+function getServerSnapshot(): ThemeName {
+  return "paper";
 }
 
 type ToggleOrigin = { x: number; y: number };
@@ -27,21 +28,23 @@ type ToggleOrigin = { x: number; y: number };
 export function useTheme() {
   const theme = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
+  const setTheme = useCallback((next: ThemeName) => {
+    document.documentElement.dataset.theme = next;
+    document.documentElement.classList.toggle("dark", next === "night");
+    try {
+      localStorage.setItem("mju-visual-theme", next);
+      localStorage.setItem("mju-theme", next === "night" ? "dark" : "light");
+    } catch {
+      // ignore storage errors
+    }
+    listeners.forEach((cb) => cb());
+  }, []);
+
   const toggleTheme = useCallback((origin?: ToggleOrigin) => {
-    const next: Theme = getSnapshot() === "dark" ? "light" : "dark";
+    const next: ThemeName = getSnapshot() === "night" ? "paper" : "night";
 
     const apply = () => {
-      if (next === "dark") {
-        document.documentElement.classList.add("dark");
-      } else {
-        document.documentElement.classList.remove("dark");
-      }
-      try {
-        localStorage.setItem("pi-theme", next);
-      } catch {
-        // ignore storage errors (private mode, quota, etc.)
-      }
-      listeners.forEach((cb) => cb());
+      setTheme(next);
     };
 
     const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -79,7 +82,7 @@ export function useTheme() {
       .catch(() => {
         // transition cancelled — ignore
       });
-  }, []);
+  }, [setTheme]);
 
-  return { theme, toggleTheme, isDark: theme === "dark" };
+  return { theme, setTheme, toggleTheme, isDark: theme === "night" };
 }
