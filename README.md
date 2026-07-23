@@ -2,15 +2,22 @@
 
 [中文文档](./README.zh-CN.md)
 
-Local-first web workspace for the [pi coding agent](https://github.com/badlogic/pi-mono). Mju Agents reads local pi session files and provides session browsing, real-time chat, model configuration, skill/MCP management, project file preview, and configurable subagents.
+Local-first agent workbench for legal professionals. Mju turns a folder of cases — ideally an Obsidian vault — into a set of case boards, and turns every instruction you type into a task with a full AI agent session behind it.
 
-It is designed to keep session files and credentials on the user's machine. It is not a legal advice service and does not replace professional review.
+It is not a legal advice service and does not replace professional review. All session files, case metadata, and credentials stay on your machine.
 
-Mju Agents bundles the Pi runtime and `pi-subagents`; users do not need to install a separate `pi` CLI. Node.js is required.
+![Mju Agents entry page](./docs/screenshot-entry.png)
 
-![Mju Agents workspace](./docs/screenshot2.png)
+## How it works
 
-One local workspace for structured tool calls, readable Markdown, session browsing, model management, and subagents.
+Four pages, one flow:
+
+- **Entry (`/`)** — a single composer. Type an instruction; Mju detects which case it belongs to (the chip is always correctable), launches an agent session inside that case's folder, and flies you to the case board. Below the composer, an always-on agenda shows what's due across all cases.
+- **Case Board (`/board/[caseId]`)** — one kanban per case (todo / in-progress / done), with a live pulse on tasks whose agent is running. Each case maps to a folder in your vault.
+- **Task (`/task/[taskId]`)** — the full chat with the agent on the left (streaming, tool calls, branches, export), and a live preview of the markdown documents it is writing on the right.
+- **Dates (`/dates`)** — every task deadline, court deadline, and schedule across all cases, in list, week, or month view. Click any item to jump into its case.
+
+Ad-hoc questions that match no case go to the **通用任务 (inbox)** board, so nothing is lost and every conversation stays a trackable task.
 
 ## Quick Start
 
@@ -27,103 +34,42 @@ npm install -g mju
 mju
 ```
 
-Then open [http://localhost:30142](http://localhost:30142). The command will try to open the browser automatically after the server is ready.
+Then open [http://localhost:30142](http://localhost:30142). On first run, point Mju at your Obsidian vault (or any folder) from the entry page — vaults are scanned for case folders automatically.
 
 **Options:**
 
 ```bash
 mju --port 8080              # custom port
 mju --hostname 127.0.0.1     # local access only
-mju -p 8080 -H 127.0.0.1     # combine options
 mju --no-open                # do not open the browser automatically
-
-PORT=8080 mju                   # environment variable is also supported
-MJU_NO_OPEN=1 mju               # useful when running as a background service
 ```
 
 ## Features
 
-- **Pick work back up**: browse previous pi conversations by project without digging through terminal history or session paths.
-- **Try different directions safely**: continue from an earlier message or fork a session into a separate route.
-- **Work across branches**: switch Git worktrees from the sidebar so new sessions and the Explorer follow the checkout you choose.
-- **Chat beside the project**: browse files on the left and preview source, docs, images, audio, and PDFs on the right while the agent works.
-- **See session state clearly**: context usage, cost, compaction state, and system prompt details are visible from the top bar.
-- **Configure less from the terminal**: manage models, login/API keys, model tests, and skill switches from the web UI.
-- **Coordinate subagents**: choose an agent's model, thinking level, tools, skills, MCP servers, and system prompt, then assign work from the task board.
-- **Keep model lists useful**: add multiple accounts for one provider, remove stale providers, and choose which models appear in chat.
+- **Case-first, not chat-first**: every agent run is bound to a task on a case board; the task keeps the original instruction and the session id.
+- **Full agent chat where it belongs**: streaming, tool-call details, in-session branches, forks (auto-rebound to the task), and HTML export live on the task page.
+- **Obsidian as the file layer**: cases are vault folders (`ops/cases/案卷`, `ops/projects/活跃项目` are scanned on init); deliverables are written back as plain markdown you keep.
+- **Agent teams**: configurable subagents (Justice / Magician / Chariot by default) with per-agent model, tools, and skills; the runtime delegates automatically on substantial work.
+- **Deadlines that aggregate**: tasks, filing deadlines, and hearings merge into one global dates view with overdue highlighting.
+- **Swiss design**: paper/night themes, one signal-red accent, no clutter — including a spotlight config strip on the entry page (models, skills, agents, plugins, theme).
+- **Local-first**: sessions in `~/.pi/agent/sessions`, project metadata in `~/.mju/projects`, nothing leaves the machine. The pi runtime and `pi-subagents` are bundled — no separate CLI install needed.
 
 ## Notes
 
-- **Data directory**: Mju reads `~/.pi/agent/sessions` by default. Set `PI_CODING_AGENT_DIR` to point at another pi agent directory.
-- **Session files**: files are stored as `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl`.
-- **Model config**: the Models panel reads and writes `models.json` in the pi agent directory. Model lists and defaults come from pi's config.
-- **File access**: file browsing and preview are scoped to the selected project directory and working directories that appear in sessions.
-- **Git worktrees**: see [Worktrees in Mju](./docs/worktrees.md) for when the switcher appears, how new worktrees are created, and what removal does.
-- **Forks vs in-session branches**: Fork creates a new `.jsonl` file. "Edit from here" creates another branch inside the same session file.
-- **Subagents**: see [Subagents and task board](./docs/subagents.md).
-- **Open-source privacy boundary**: see [Open-source release and privacy](./docs/open-source-release.md).
+- **Data directories**: sessions `~/.pi/agent/sessions/<encoded-cwd>/*.jsonl`; Mju metadata `~/.mju/projects/<encoded-cwd>/store.json`. Set `PI_CODING_AGENT_DIR` / `MJU_HOME` to relocate.
+- **Legacy links**: old `/sessions?session=<id>` URLs redirect to the owning task when one exists.
+- **Subagents**: see [Subagents](./docs/subagents.md). **Privacy boundary**: see [Open-source release and privacy](./docs/open-source-release.md).
 
 ## Roadmap & Architecture
 
-- **Roadmap**: see [Mju Agents Legal Workbench Roadmap](./docs/roadmap.md).
-- **Architecture**: see [Mju Agents Architecture](./docs/architecture.md).
+- **Roadmap**: [docs/roadmap.md](./docs/roadmap.md) — next up: task reassignment, AI-based case classification, workflow launcher.
+- **Architecture**: [docs/architecture.md](./docs/architecture.md).
 
 ## Development
 
 ```bash
 npm install
-npm run dev
+npm run dev    # http://localhost:30142
 ```
 
-The local dev server runs at [http://localhost:30142](http://localhost:30142).
-
-Common checks:
-
-```bash
-node_modules/.bin/tsc --noEmit
-npm run lint
-```
-
-Avoid running `next build` / `npm run build` during local development. It writes to `.next/` and can interfere with the dev server; leave builds for release work.
-
-## Project Structure
-
-```text
-app/
-  api/
-    agent/          # creates/drives AgentSession and exposes SSE events
-    auth/           # OAuth and API key management
-    cwd/validate/   # custom working directory validation
-    default-cwd/    # pi default working directory lookup
-    files/          # file listing, reading, preview, and watching
-    home/           # current user home directory
-    models/         # available models, default model, thinking levels
-    models-config/  # read/write models.json and test models
-    sessions/       # session reads, rename, delete, context, HTML export
-    skills/         # skill listing, search, install, enable/disable
-components/
-  AppShell.tsx        # main layout, URL state, top panels, file tabs
-  SessionSidebar.tsx  # project selector, session tree, Explorer
-  ChatWindow.tsx      # messages, SSE, image drag/drop, minimap
-  ChatInput.tsx       # input bar, model/tools/thinking/compact/slash controls
-  MessageView.tsx     # message, thinking, tool call/result rendering
-  ModelsConfig.tsx    # model and auth configuration panel
-  SkillsConfig.tsx    # skill management panel
-  FileExplorer.tsx    # file tree
-  FileViewer.tsx      # source, diff, image, audio, PDF, DOCX preview
-lib/
-  rpc-manager.ts      # AgentSessionWrapper lifecycle and global registry
-  session-reader.ts   # parses .jsonl session files and branch contexts
-  normalize.ts        # normalizes toolCall field names
-  file-access.ts      # file read safety boundary
-  file-paths.ts       # path encoding and relative path helpers
-  markdown.ts         # Markdown/Mermaid/KaTeX plugin configuration
-  pi-types.ts         # pi-related types
-hooks/
-  useAgentSession.ts  # session loading, command sending, SSE state machine
-  useAudio.ts         # completion sound
-  useDragDrop.ts      # image drag/drop
-  useTheme.ts         # theme switching
-bin/
-  mju.js              # npm CLI entrypoint
-```
+Checks: `node_modules/.bin/tsc --noEmit`, `npm run lint`, `npm run test:backend`. Never run `next build` during dev. See [AGENTS.md](./AGENTS.md) for the full file map and design decisions.

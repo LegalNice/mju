@@ -2,124 +2,74 @@
 
 [English](./README.md)
 
-[pi 编程智能体](https://github.com/badlogic/pi-mono) 的本地优先网页工作台。Mju Agents 读取本机 pi 会话文件，在浏览器里提供会话管理、实时对话、模型配置、技能与 MCP 管理、项目文件预览和可配置的 Subagent。
+面向法律从业者的本地优先 Agent 工作台。Mju 把案件文件夹（最好是 Obsidian 文件库）变成一组案件看板，把你输入的每一条指令变成一个背后挂着完整 AI 会话的任务。
 
-它的设计目标是让会话文件和凭据留在用户自己的机器上。它不是法律意见服务，也不能替代专业律师审核。
+它不是法律意见服务，也不替代专业复核。所有会话文件、案件元数据和凭证都留在你自己的机器上。
 
-Mju Agents 已内置 Pi 运行时和 `pi-subagents`，用户不需要另外安装 `pi` CLI；只需要准备 Node.js。
+![Mju Agents 进入页](./docs/screenshot-entry.png)
+
+## 工作方式
+
+四个页面，一条主线：
+
+- **进入页（`/`）**——只有一个输入框。输入指令，Mju 自动识别归属案件（识别结果随时可改），在该案件文件夹里启动 Agent 会话，然后带你进入案件看板。输入框下方常驻「近期在办」，不用打字也能看到各案件即将到期的事项。
+- **案件 Board（`/board/[caseId]`）**——每个案件一个看板（待办 / 进行中 / 完成），Agent 正在执行的任务卡片上有脉冲标记。每个案件对应文件库里的一个文件夹。
+- **任务子页（`/task/[taskId]`）**——左栏是与 Agent 的完整对话（流式输出、工具调用、分支、导出），右栏是 Agent 正在撰写的 markdown 文档的实时预览。
+- **全局 Dates（`/dates`）**——跨案件聚合所有任务截止、诉讼期限和日程，列表 / 周 / 月三种视图切换，点击任意条目跳回所属案件。
+
+识别不了归属的随手提问会进入「通用任务」收件箱看板——每段对话都是一个可追踪的任务，不会丢。
 
 ## 快速开始
 
-**无需安装，直接运行：**
+**免安装直接运行：**
 
 ```bash
 npx mju@latest
 ```
 
-**或全局安装后使用：**
+**或全局安装：**
 
 ```bash
 npm install -g mju
 mju
 ```
 
-启动后打开 [http://localhost:30142](http://localhost:30142)。命令会在服务就绪后尝试自动打开浏览器。
+然后打开 [http://localhost:30142](http://localhost:30142)。首次使用，在进入页指向你的 Obsidian 文件库（或任意文件夹）即可——文件库会自动扫描案卷文件夹。
 
-**可选参数：**
+**参数：**
 
 ```bash
 mju --port 8080              # 自定义端口
 mju --hostname 127.0.0.1     # 仅本机访问
-mju -p 8080 -H 127.0.0.1     # 组合使用
 mju --no-open                # 不自动打开浏览器
-
-PORT=8080 mju                   # 也支持环境变量
-MJU_NO_OPEN=1 mju               # 适用于后台服务或开机自启
 ```
 
-## 功能介绍
+## 功能
 
-- **把历史工作接回来**：打开网页就能按项目找到以前的 pi 对话，不必在终端里翻文件或记住会话路径。
-- **放心试不同方向**：可以从某条历史消息重新开始，也可以复制出一条独立的新路线，探索方案时不怕弄乱原来的对话。
-- **跨分支工作**：在侧边栏切换 Git worktree，让新会话和 Explorer 跟随你选择的 checkout。
-- **边聊边看项目文件**：左侧浏览项目文件，右侧打开源码、文档、图片、音频和 PDF；文件变化会自动刷新，适合边让 agent 改边检查结果。
-- **随时掌握会话状态**：在顶部就能看到上下文占用、花费、压缩结果和系统提示，长会话不再像黑箱。
-- **少离开当前界面**：模型、登录/API key、模型测试和技能开关都能在网页里处理，配置 agent 时不用在多个工具之间来回切换。
-- **协作 Subagent**：可配置模型、思考强度、工具、技能、MCP 和 System Prompt，并通过任务看板分配工作。
-- **管理模型更清爽**：同一供应商可以添加多个账号，删除不再使用的供应商，并控制哪些模型出现在对话框中。
+- **案件优先，不是聊天优先**：每次 Agent 运行都绑定在案件看板的一个任务上，任务保存原始指令和会话 id。
+- **完整对话在它该在的地方**：流式输出、工具调用详情、会话内分支、fork（自动回写任务绑定）、HTML 导出，都在任务子页。
+- **Obsidian 是文件层**：案件就是文件库文件夹（初始化时自动扫描 `ops/cases/案卷`、`ops/projects/活跃项目`）；交付物以纯 markdown 写回，永远属于你。
+- **Agent 团队**：可配置的子 Agent（默认 Justice / Magician / Chariot），各自独立的模型、工具和技能；遇到复杂任务运行时会自动分派。
+- **期限自动聚合**：任务截止、举证期限、开庭日程合并进同一个全局 Dates 视图，逾期标红。
+- **瑞士风设计**：纸白 / 墨黑双主题，全场唯一的信号红点缀，没有多余装饰——进入页还有探照灯式配置条（模型、技能、Agent、插件、主题）。
+- **本地优先**：会话存在 `~/.pi/agent/sessions`，项目元数据存在 `~/.mju/projects`，数据不出本机。pi 运行时和 `pi-subagents` 已内置，无需单独安装 CLI。
 
-## 注意事项
+## 说明
 
-- **数据目录**：Mju 默认读取 `~/.pi/agent/sessions` 下的会话文件。可通过环境变量 `PI_CODING_AGENT_DIR` 指定其他 pi agent 目录。
-- **会话文件**：路径形如 `~/.pi/agent/sessions/<编码后的工作目录>/<时间戳>_<uuid>.jsonl`。
-- **模型配置**：Models 面板读写 pi agent 目录下的 `models.json`，模型列表和默认模型由 pi 的配置解析得到。
-- **文件访问**：文件浏览和预览面向当前选择的项目目录，以及会话中已出现过的工作目录。
-- **Git worktree**：什么时候显示切换器、新建目录在哪里、删除会影响什么，见 [Mju 里的 Worktree](./docs/worktrees.zh-CN.md)。
-- **Fork 与会话内分支不同**：Fork 会创建新的 `.jsonl` 文件；“Edit from here” 是同一会话文件里的分支。
-- **Subagent 与看板**：见 [Subagent 与任务看板](./docs/subagents.zh-CN.md)。
-- **开源隐私边界**：见 [开源发布与隐私边界](./docs/open-source-release.zh-CN.md)。
+- **数据目录**：会话 `~/.pi/agent/sessions/<编码路径>/*.jsonl`；Mju 元数据 `~/.mju/projects/<编码路径>/store.json`。可用 `PI_CODING_AGENT_DIR` / `MJU_HOME` 改位置。
+- **旧链接**：老的 `/sessions?session=<id>` 链接会自动重定向到所属任务（如果能找到的话）。
+- **子 Agent**：见 [Subagents 文档](./docs/subagents.zh-CN.md)；**开源隐私边界**：见 [开源发布与隐私](./docs/open-source-release.zh-CN.md)。
 
-## 规划与架构
+## 路线图与架构
 
-- **产品路线图**：见 [Mju Agents 法律工作台重构路线图](./docs/roadmap.md)。
-- **技术架构**：见 [Mju Agents 架构说明](./docs/architecture.md)。
+- **路线图**：[docs/roadmap.md](./docs/roadmap.md)——下一步：任务改派、AI 归属识别、工作流启动器。
+- **架构**：[docs/architecture.md](./docs/architecture.md)。
 
 ## 开发
 
 ```bash
 npm install
-npm run dev
+npm run dev    # http://localhost:30142
 ```
 
-本地开发端口为 [http://localhost:30142](http://localhost:30142)。
-
-常用检查：
-
-```bash
-node_modules/.bin/tsc --noEmit
-npm run lint
-```
-
-开发时不要运行 `next build` / `npm run build`，它会写入 `.next/`，容易影响正在运行的 dev server。发布流程再执行构建。
-
-## 项目结构
-
-```
-app/
-  api/
-    agent/          # 创建/驱动 AgentSession，提供 SSE 事件流
-    auth/           # OAuth 和 API key 管理
-    cwd/validate/   # 自定义工作目录校验
-    default-cwd/    # 获取 pi 默认工作目录
-    files/          # 文件列表、读取、预览、watch
-    home/           # 当前用户 home 目录
-    models/         # 可用模型、默认模型、thinking levels
-    models-config/  # 读写 models.json、测试模型
-    sessions/       # 会话读取、重命名、删除、上下文、HTML 导出
-    skills/         # skills 列表、搜索、安装、启停
-components/
-  AppShell.tsx        # 主布局、URL 状态、顶部面板、文件标签
-  SessionSidebar.tsx  # 项目选择、会话树、Explorer
-  ChatWindow.tsx      # 消息区、SSE、拖拽图片、minimap
-  ChatInput.tsx       # 输入栏、模型/工具/thinking/compact/slash controls
-  MessageView.tsx     # 消息、thinking、tool call/result 渲染
-  ModelsConfig.tsx    # 模型和认证配置面板
-  SkillsConfig.tsx    # 技能管理面板
-  FileExplorer.tsx    # 文件树
-  FileViewer.tsx      # 源码、diff、图片、音频、PDF、DOCX 预览
-lib/
-  rpc-manager.ts      # AgentSessionWrapper 生命周期和全局 registry
-  session-reader.ts   # 解析 .jsonl 会话文件和分支上下文
-  normalize.ts        # 规范化 toolCall 字段名
-  file-access.ts      # 文件读取安全边界
-  file-paths.ts       # 文件路径编码/相对路径工具
-  markdown.ts         # Markdown/Mermaid/KaTeX 插件配置
-  pi-types.ts         # pi 相关类型
-hooks/
-  useAgentSession.ts  # 会话加载、发送命令、SSE 状态机
-  useAudio.ts         # 完成提示音
-  useDragDrop.ts      # 图片拖拽
-  useTheme.ts         # 主题切换
-bin/
-  mju.js              # npm CLI 入口
-```
+检查：`node_modules/.bin/tsc --noEmit`、`npm run lint`、`npm run test:backend`。开发时不要跑 `next build`。完整文件地图和设计决策见 [AGENTS.md](./AGENTS.md)。
