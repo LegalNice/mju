@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
@@ -181,9 +182,9 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
         }}
       >
         <span style={{ ...MICRO, color: "var(--text-dim)" }}>案件不存在</span>
-        <a href="/board" style={{ fontSize: 12, color: "var(--text-muted)" }}>
+        <Link href="/board" style={{ fontSize: 12, color: "var(--text-muted)" }}>
           返回 Board
-        </a>
+        </Link>
       </div>,
     );
   }
@@ -294,7 +295,7 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
                 const isRunning = Boolean(task.sessionId && runningSessionIds.has(task.sessionId));
                 const overdue = Boolean(task.deadline && task.deadline < today && task.status !== "完成");
                 return (
-                  <a
+                  <Link
                     key={task.id}
                     href={`/task/${task.id}?cwd=${encodeURIComponent(cwd)}`}
                     onMouseEnter={() => setHoveredTaskId(task.id)}
@@ -354,7 +355,7 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
                         )}
                       </span>
                     </div>
-                  </a>
+                  </Link>
                 );
               })}
             </section>
