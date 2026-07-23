@@ -3,7 +3,7 @@
 ## Quick Start
 
 ```bash
-npm run dev   # port 30141
+npm run dev   # port 30142
 ```
 
 Typecheck: `node_modules/.bin/tsc --noEmit`  
@@ -38,6 +38,13 @@ Browser                Next.js Server              AgentSession (in-process)
 ## File Map
 
 ```
+app/
+  page.tsx                      / — entry page (EntryPage)
+  board/page.tsx                /board — redirect to last case (BoardIndex)
+  board/[caseId]/page.tsx       per-case kanban (CaseBoardView)
+  dates/page.tsx                global dates, list/week/month (DatesView)
+  task/[taskId]/page.tsx        task detail (TaskDetailView)
+  sessions/page.tsx             chat workbench (AppShell, ?session= deep link)
 app/api/
   sessions/route.ts               GET  list all sessions
   sessions/[id]/route.ts          GET/PATCH/DELETE session
@@ -52,6 +59,8 @@ app/api/
   auth/login/[provider]/route.ts  GET OAuth/device-code SSE | POST manual code
   auth/logout/[provider]/route.ts POST OAuth logout
   auth/providers/route.ts         GET OAuth provider list
+  casedocs/route.ts               GET ?cwd=&caseId= — case folder .md files, newest first
+  cases/route.ts                  GET/POST cases; POST {action:"ensure_inbox"} creates the inbox case
   cwd/validate/route.ts           POST validate/select a cwd
   default-cwd/route.ts            POST create ~/pi-cwd-YYYYMMDD
   files/[...path]/route.ts        GET file contents for viewer
@@ -60,9 +69,15 @@ app/api/
   models-config/route.ts          GET/PUT — read/write ~/.pi/agent/models.json
   models-config/test/route.ts     POST test a configured model/provider
   plugins/route.ts                GET/POST package plugin management
+  projects/route.ts               GET list initialized ~/.mju projects (decoded cwd, caseCount)
+  projects/init/route.ts          POST init project store (+ Obsidian vault scan)
   skills/route.ts                 GET/PATCH loaded skills and disable-model-invocation
   skills/install/route.ts         POST install skills through npx skills add
   skills/search/route.ts          GET/POST skills.sh search
+  tasks/route.ts                  GET/POST/PATCH/DELETE tasks (sessionId/originPrompt supported)
+  deadlines/route.ts              GET/POST/PATCH/DELETE deadlines
+  schedules/route.ts              GET/POST/PATCH/DELETE schedules
+  workflows/route.ts              GET/POST workflow preview/start
   worktrees/route.ts              GET/POST/DELETE git worktrees
 
 lib/
@@ -85,7 +100,13 @@ lib/
   subagent-config-tool.ts configure_subagent custom tool — writes project agents to ~/.mju
 
 components/
-  AppShell.tsx        layout + URL state + tab management
+  AppNav.tsx          shared top nav (Board/Dates/Sessions) for workbench pages
+  EntryPage.tsx       / entry composer + case detection chip + launch transition
+  BoardIndex.tsx      /board redirect (localStorage mju-last-case → first active case)
+  CaseBoardView.tsx   per-case kanban (3 columns, running pulse, case switcher)
+  DatesView.tsx       global dates with list/week/month switchable views
+  TaskDetailView.tsx  task detail: prompt + workflow timeline | live doc preview
+  AppShell.tsx        chat workbench layout + URL state + tab management
   SessionSidebar.tsx  session tree + FileExplorer
   ChatWindow.tsx      chat composition + completion sound wrapper
   ChatInput.tsx       input bar + model/thinking/tools/compact controls
@@ -112,6 +133,18 @@ hooks/
 ---
 
 ## Key Design Decisions & Traps
+
+### Workbench IA (entry → board → dates → task)
+- `/` is a full-bleed entry composer, not the chat UI — the chat workbench lives at `/sessions` (AppShell, `?session=` deep link preserved).
+- Entry launch binds task ↔ session: `POST /api/agent/new` with `cwd = case.vaultPath` (agent works inside the case folder), then `POST /api/tasks` with `cwd = project root` (store lives there) carrying `sessionId` + `originPrompt`. Two different cwds on purpose.
+- Unmatched instructions land in the "通用任务" inbox case (`ensureInboxCase` in `lib/mju-store.ts`, idempotent; folder `ops/inbox` for Obsidian vaults).
+- `localStorage` keys: `mju-last-case` ({cwd, caseId} — board/dates project resolution), `mju-entry-cwd` (entry project picker), `mju-dates-view` (list/week/month).
+
+### Chrome 150 selector-matching bug — avoid same-class ancestor selectors
+`body.dates .dates { … }` (ancestor and descendant sharing a class name) silently fails to match in Chrome 150 — reproduced in a minimal case and it cost us a "blank page" bug in `sketches/005-ia`. Rename state classes so ancestor/descendant class names never collide (e.g. `body.show-dates .dates`), or use inline styles like the components do.
+
+### Headless screenshots with SSE pages
+Pages holding an open `EventSource` (board/task/dates) deadlock Chrome's `--virtual-time-budget` and never produce a screenshot. Use `scripts/cdp-shot.mjs <url> <out> [settleMs] [clickText]` — a dependency-free CDP screenshotter (Node 22 built-in WebSocket) that waits a fixed settle time instead.
 
 ### AgentSession lifecycle (`lib/rpc-manager.ts`)
 - One `AgentSessionWrapper` per session id, keyed in `globalThis.__piSessions`

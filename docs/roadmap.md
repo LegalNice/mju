@@ -2,7 +2,7 @@
 
 > 本文档是 Mju Agents 的产品和技术规划，供人类开发者和 AI Agent 共同阅读。
 >
-> 当前状态：**第一、二阶段已完成；第三阶段的工作流后端已完成，启动器界面待接入。**
+> 当前状态：**第一、二阶段已完成；第三阶段的工作流后端已完成，启动器界面待接入；IA 重构（进入页 → Board → Dates → 任务子页）已完成。**
 
 ## 目标
 
@@ -198,6 +198,32 @@ interface Deliverable {
 
 - 后端测试覆盖预览不落库、诉讼工作流生成 5 项任务、运行记录持久化和重复启动冲突
 - 工作流启动器的前端接入待后续安排
+
+---
+
+## 第 3.5 阶段：IA 重构（进入页 → Board → Dates → 任务子页）✅ 已完成
+
+把原先的「IDE 式单页 + 模态框」结构改为以任务流为中心的多页结构：
+
+### 路由
+
+- `/`：进入页（`components/EntryPage.tsx`）——大 composer，无侧栏；输入时本地模糊匹配归属案件（案件 title/parties/court/caseNumber 作为子串命中指令文本），chip 可改派；未识别归入「通用任务」收件箱（`ensureInboxCase`，vault 下 `ops/inbox`）；启动时一次 `POST /api/agent/new`（cwd = 案件 vaultPath，创建即提示词）+ `POST /api/tasks`（cwd = 项目根，写入 `sessionId`/`originPrompt`），过渡动画后跳转对应案件 Board
+- `/board/[caseId]`：案件 Board（`components/CaseBoardView.tsx`）——刊头 + 全案件切换下拉 + 三列看板；`sessionId` 在运行集合中的任务卡显示脉冲「执行中」；`/board` 索引页按 `localStorage mju-last-case` 重定向
+- `/dates`：全局 Dates（`components/DatesView.tsx`）——跨案件聚合 tasks/deadlines/schedules，列表时间轴 / 周视图 / 月日历三视图分段切换（`localStorage mju-dates-view`），条目点击穿透到案件 Board 或任务子页
+- `/task/[taskId]`：任务子页（`components/TaskDetailView.tsx`）——左栏指令 + 会话工作流时间线（SSE 实时）+ 追问 composer；右栏案件 markdown 文档列表 + `MarkdownBody` 实时预览（运行中 3s 轮询）
+- `/sessions`：原聊天工作台（AppShell 整体迁入，保留 `?session=` 深链；顶栏 Cases/Tasks/Dates 模态框入口已移除，旧组件 CaseBoard/LegalTaskBoard/DeadlinePanel 已删除）
+
+### 数据层
+
+- `Task` 新增 `sessionId?` / `originPrompt?`（任务 ↔ pi 会话绑定）；`MjuStore` 新增 `cwd?`（writeStore 自动回填）
+- 新路由：`GET /api/projects`（枚举 `~/.mju/projects`，fs 回溯解码连字符路径）、`GET /api/casedocs`（案件 vaultPath 下 md 按 mtime 倒序，自动 `allowFileRoot`）
+- `POST /api/cases {action:"ensure_inbox"}`：幂等创建「通用任务」收件箱案件
+
+### 已确认待后续
+
+- 未识别指令的 AI 兜底分类（本轮仅本地匹配 + 通用任务收件箱）
+- 跨项目聚合的全局 Dates（本轮为当前项目全局）
+- 通用任务收件箱的出口精细化
 
 ---
 
