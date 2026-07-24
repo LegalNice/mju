@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Wordmark } from "./Wordmark";
 import { usePathname } from "next/navigation";
 
 /**
@@ -26,8 +27,8 @@ export function AppNav({ boardHref }: { boardHref?: string }) {
         background: "var(--bg)",
       }}
     >
-      <Link href="/" style={{ fontWeight: 700, fontSize: 15, color: "var(--text)", textDecoration: "none" }}>
-        Mju<span style={{ color: "var(--accent)" }}>—</span>Agents
+      <Link href="/" style={{ textDecoration: "none" }}>
+        <Wordmark fontSize={15} />
       </Link>
       <nav style={{ display: "flex", gap: 24 }}>
         {items.map((item) => {
