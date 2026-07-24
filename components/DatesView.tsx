@@ -448,7 +448,9 @@ export function DatesView() {
                   background: "transparent",
                   cursor: "pointer",
                   color: view === v ? "var(--text)" : "var(--text-muted)",
-                  textDecoration: view === v ? "underline" : "none",
+                  // longhand only — mixing the textDecoration shorthand with
+                  // textDecorationColor/Thickness trips React's style warning
+                  textDecorationLine: view === v ? "underline" : "none",
                   textDecorationColor: "var(--accent)",
                   textUnderlineOffset: 5,
                   textDecorationThickness: 2,
