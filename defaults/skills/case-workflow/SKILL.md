@@ -1,0 +1,51 @@
+---
+name: case-workflow
+description: "Handle LegalNice mainland-China case work from intake through closeout. Use for existing or new cases, case tasks, schedules, deadlines, filing materials, case analysis, strategy decisions, hearing outlines, evidence organization, or any request that must be recorded in a case workspace."
+---
+
+# 案卷工作流
+
+本 skill 只负责入口识别和收尾；法律实体判断仍先按 `litigation-legal` 或对应领域插件执行。识别后必须加载对应专项 skill，不用本 skill 替代专项能力。
+
+## 先判定入口
+
+1. 先在 `ops/cases/案卷/`、`ops/cases/休眠案卷/`、`ops/cases/归档案卷/` 搜索当事人、案由和文件名，确认是既有案卷还是新案卷。
+2. 既有案卷不得另建平行目录；先读案件主文件，再按 [案卷当下状态治理](../case-file-conventions/references/context-governance.md) 的顺序读取。
+3. 只有确认不存在既有案卷时，才加载 `legal-case-init`。既有案卷按本次产出加载 `task-do`、`case-file-conventions`、`case-analysis`、`litigation-strategy-report` 或 `trial-outline`。
+
+## 跨库复用预检
+
+对新案、实质性新任务和文书/策略工作，在开始实体分析或写作前完成下列检索；单纯登记任务、日程、期限或机械跟进可跳过。
+
+1. 以当事人/客户、案由、程序阶段、事项或文书类型组成 2—5 个检索词，在活跃、休眠、归档案卷和项目中查找同类事实、已完成文书和处理结果。
+2. 在 `templates/`、`config/templates/` 与既有 Markdown 文书中查找可复用的文字模板、格式母版或成熟结构；有具体母版时优先沿用，不以泛化文本替代。
+3. 在 `wiki/distilled/`、`shared-memory/工作流/` 和有关锚点中找可迁移的判断资产、事实变量和流程规则。将命中内容当作工作线索；涉及时效性规则、裁判口径或本案事实时另行核验。
+4. 仅在用户提到已有沟通、会议、想法、录音或个人记录时，用相同检索词定向查 `life/日记/`、`ops/daily/`；可能在 Get笔记时先按 `getnote` 路由到 `getnote-search`。不得无关键词扫读日记，也不得把无关私人记录写入案卷。
+5. 先向用户简短回显“可复用线索 / 拟采用方式 / 待核验点”，再开始实体工作。新建的实质性任务在正文留 `## 检索与复用`，写入有用来源和采用边界；没有命中也如实记录。
+
+## 记录行动
+
+先判断记录类型，再写入对应目录：
+
+| 情况 | 目录 | 说明 |
+| --- | --- | --- |
+| 需要完成的工作 | `任务/` | 起草、审查、提交、跟进、补证等 |
+| 有明确起止时间的安排 | `日程/` | 开庭、会议、沟通、出差等 |
+| 必须在某日前处理的时限 | `期限/` | 举证、答辩、上诉、缴费等 |
+| 已发生的重要事实或程序节点 | `大事记/` | 不作为待办事项 |
+
+- 已有同一事项页时更新，不重复新建。
+- 截止日期未知且用户未说暂不记录时，先询问。
+- `状态` 只能为 `待办`、`进行中`、`完成`、`取消`；等待对象、阻塞原因和下一步另写字段或正文。
+- 多份材料、分析、文书或交付记录组成的一次事项，使用“任务页 + `工作包/<同名事项>/`”。`任务/` 只放任务页。
+
+## 路由产出
+
+- 原始材料、证据和外部来源进入 `材料/`；对外提交或交付文本进入 `文书/`；内部推演进入 `分析/`；不要把 DOCX、PDF 原件放入 Vault。
+- 案件分析必须围绕程序阶段、主体关系、请求权/抗辩、待证事实、举证责任、证据强度和风险边界展开；事实、评价与推论分开写。
+- 策略记录写明可选路径、选择理由、放弃理由、所依材料边界和重启条件；历史分析未标明 `判断效力` 时只能作为历史参考。
+- 庭审提纲写成可直接阅读或宣读的正式稿，证据只能证明到哪一步就写到哪一步，不用内部工作流语言。
+
+## 收尾
+
+按 `case-file-conventions/references/context-governance.md` 更新受影响的快照、分析效力、交接记录和任务/日程/期限/大事记。实体产出放在真实业务目录或工作包，补齐 schema 要求的 `author_role`、`review_state` 和分析字段。

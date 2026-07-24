@@ -26,5 +26,10 @@ await send("Page.enable");
 await send("Page.navigate", { url });
 await sleep(Number(settleMs));
 const out = await send("Runtime.evaluate", { expression: expr, returnByValue: true, awaitPromise: true });
-console.log(JSON.stringify(out.result?.result?.value ?? out, null, 1));
+const r = out.result;
+if (r?.exceptionDetails) {
+  console.log("EXCEPTION:", JSON.stringify(r.exceptionDetails.exception?.description ?? r.exceptionDetails.text, null, 1));
+} else {
+  console.log(JSON.stringify(r?.result?.value ?? out, null, 1));
+}
 ws.close(); chrome.kill(); process.exit(0);

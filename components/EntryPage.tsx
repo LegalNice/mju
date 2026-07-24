@@ -414,6 +414,11 @@ export function EntryPage() {
   const [pinned, setPinned] = useState<Pinned>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [caseQuery, setCaseQuery] = useState("");
+  const [caseCreateOpen, setCaseCreateOpen] = useState(false);
+  const [newCaseTitle, setNewCaseTitle] = useState("");
+  const [newCaseType, setNewCaseType] = useState<"litigation" | "advisory">("litigation");
+  const [caseCreating, setCaseCreating] = useState(false);
+  const [caseCreateError, setCaseCreateError] = useState<string | null>(null);
   const [modelList, setModelList] = useState<ModelEntry[]>([]);
   const [selectedModel, setSelectedModel] = useState<ModelSelection | null>(null);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
@@ -457,6 +462,9 @@ export function EntryPage() {
         setProjects(list);
         const stored = localStorage.getItem(LS_CWD);
         const fromStore = stored ? list.find((p) => p.cwd === stored) : undefined;
+        // Self-heal: a stored cwd whose project no longer exists (deleted
+        // folder/store) is dropped, then normal selection rules apply.
+        if (stored && !fromStore) localStorage.removeItem(LS_CWD);
         if (fromStore) setProject(fromStore);
         else if (list.length === 1) setProject(list[0]);
       } catch {
@@ -685,6 +693,43 @@ export function EntryPage() {
     setProject(p); // the project effect persists the cwd to localStorage
   };
 
+  /** Pin the chip to a case/inbox — same effect as a manual override in the dropdown. */
+  const selectPin = (pin: Pinned) => {
+    setPinned(pin);
+    pinnedRef.current = pin;
+    // Manual override cancels any pending AI fallback.
+    classifySeq.current++;
+    setClassifying(false);
+    if (classifyTimer.current) clearTimeout(classifyTimer.current);
+    setMenuOpen(false);
+    setCaseQuery("");
+    setCaseCreateOpen(false);
+  };
+
+  /** Inline "new case" form submit — creates the case, then pins the chip to it. */
+  const createCase = async () => {
+    const title = newCaseTitle.trim();
+    if (!title || caseCreating || !project) return;
+    setCaseCreating(true);
+    setCaseCreateError(null);
+    try {
+      const res = await fetch("/api/cases", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cwd: project.cwd, title, type: newCaseType }),
+      });
+      const data = await readJson(res);
+      const created = data.case as MjuCase;
+      setCases((prev) => [...prev, created]);
+      setNewCaseTitle("");
+      selectPin({ kind: "case", value: created });
+    } catch (err) {
+      setCaseCreateError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCaseCreating(false);
+    }
+  };
+
   const chipTitle = pinned?.kind === "case" ? pinned.value.title
     : pinned?.kind === "inbox" ? INBOX_TITLE
     : detected ? detected.title
@@ -820,6 +865,7 @@ export function EntryPage() {
         .mju-entry-model:hover { color: var(--accent); }
         .mju-entry-proj:hover { color: var(--accent); }
         .mju-entry-browse:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+        .mju-entry-create:hover:not(:disabled) { background: var(--accent-hover); }
       `}</style>
 
       <div style={{ width: "min(640px, 92vw)", display: "flex", flexDirection: "column" }}>
@@ -839,6 +885,63 @@ export function EntryPage() {
               选择一个 Obsidian 文件库或任意文件夹作为工作区；Mju 会在其中建立案件结构。
             </div>
             <InitProjectForm onInitialized={onProjectInitialized} />
+          </div>
+        )}
+
+        {projects !== null && projects.length > 0 && !project && (
+          <div style={{ marginTop: 32 }}>
+            <div style={{ ...micro, color: "var(--text-dim)", marginBottom: 6 }}>选择项目</div>
+            <div style={{ border: "1px solid var(--border)", borderRadius: 2 }}>
+              {projects.map((p, i) => (
+                <button
+                  key={p.cwd}
+                  type="button"
+                  className="mju-entry-item"
+                  onClick={() => setProject(p)}
+                  style={{
+                    display: "flex",
+                    width: "100%",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "9px 12px",
+                    border: "none",
+                    borderBottom: i < projects.length - 1 ? "1px solid var(--border)" : "none",
+                    background: "transparent",
+                    font: "inherit",
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                >
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span
+                      style={{
+                        display: "block",
+                        fontSize: 12,
+                        color: "var(--text)",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {p.name}
+                    </span>
+                    <span
+                      style={{
+                        display: "block",
+                        marginTop: 2,
+                        fontSize: 10,
+                        color: "var(--text-dim)",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {p.cwd}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
@@ -1167,6 +1270,7 @@ export function EntryPage() {
                     onClick={() => {
                       setMenuOpen((v) => !v);
                       setCaseQuery("");
+                      setCaseCreateOpen(false);
                     }}
                     style={{
                       color: "var(--text-dim)",
@@ -1195,74 +1299,187 @@ export function EntryPage() {
                     zIndex: 30,
                   }}
                 >
-                  <div style={{ padding: 8, borderBottom: "1px solid var(--border)" }}>
-                    <input
-                      autoFocus
-                      value={caseQuery}
-                      onChange={(e) => setCaseQuery(e.target.value)}
-                      placeholder="搜索案件…"
-                      style={{
-                        width: "100%",
-                        boxSizing: "border-box",
-                        border: "1px solid var(--border)",
-                        borderRadius: 2,
-                        padding: "6px 8px",
-                        font: "inherit",
-                        fontSize: 12,
-                        background: "transparent",
-                        color: "var(--text)",
-                        outline: "none",
-                      }}
-                    />
-                  </div>
-                  <div style={{ maxHeight: 320, overflowY: "auto" }}>
-                    {caseQueryLower && menuCases.length === 0 && (
-                      <div style={{ padding: "9px 12px", fontSize: 12, color: "var(--text-dim)" }}>
-                        无匹配案件
-                      </div>
-                    )}
-                    {[...menuCases.map((c) => ({ id: c.id, title: c.title, pin: { kind: "case", value: c } as Pinned })),
-                      { id: "__inbox__", title: INBOX_TITLE, pin: { kind: "inbox" } as Pinned },
-                    ].map((item, i, arr) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        className="mju-entry-item"
-                        onClick={() => {
-                          setPinned(item.pin);
-                          pinnedRef.current = item.pin;
-                          // Manual override cancels any pending AI fallback.
-                          classifySeq.current++;
-                          setClassifying(false);
-                          if (classifyTimer.current) clearTimeout(classifyTimer.current);
-                          setMenuOpen(false);
-                          setCaseQuery("");
+                  {caseCreateOpen ? (
+                    <div style={{ padding: 8 }}>
+                      <input
+                        autoFocus
+                        value={newCaseTitle}
+                        onChange={(e) => {
+                          setNewCaseTitle(e.target.value);
+                          setCaseCreateError(null);
                         }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                            e.preventDefault();
+                            void createCase();
+                          }
+                        }}
+                        placeholder="如 某某公司 vs 某某"
                         style={{
-                          display: "flex",
                           width: "100%",
-                          alignItems: "center",
-                          gap: 10,
-                          padding: "9px 12px",
-                          border: "none",
-                          borderBottom: i < arr.length - 1 ? "1px solid var(--border)" : "none",
-                          background: "transparent",
-                          color: "var(--text)",
+                          boxSizing: "border-box",
+                          border: "1px solid var(--border)",
+                          borderRadius: 2,
+                          padding: "6px 8px",
                           font: "inherit",
                           fontSize: 12,
-                          cursor: "pointer",
+                          background: "transparent",
+                          color: "var(--text)",
+                          outline: "none",
+                        }}
+                      />
+                      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                        {(["litigation", "advisory"] as const).map((t) => {
+                          const active = newCaseType === t;
+                          return (
+                            <button
+                              key={t}
+                              type="button"
+                              onClick={() => setNewCaseType(t)}
+                              style={{
+                                ...micro,
+                                border: active ? "1px solid var(--accent)" : "1px solid var(--border)",
+                                borderRadius: 2,
+                                background: "transparent",
+                                color: active ? "var(--accent)" : "var(--text-muted)",
+                                padding: "5px 10px",
+                                cursor: "pointer",
+                              }}
+                            >
+                              {t === "litigation" ? "诉讼" : "顾问"}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {caseCreateError && (
+                        <div style={{ marginTop: 8, fontSize: 12, color: "var(--accent)" }}>
+                          {caseCreateError}
+                        </div>
+                      )}
+                      <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center" }}>
+                        <button
+                          type="button"
+                          className="mju-entry-create"
+                          onClick={() => void createCase()}
+                          disabled={caseCreating || !newCaseTitle.trim()}
+                          style={{
+                            ...micro,
+                            border: "none",
+                            borderRadius: 2,
+                            background: "var(--accent)",
+                            color: "#fff",
+                            padding: "6px 14px",
+                            cursor: caseCreating || !newCaseTitle.trim() ? "default" : "pointer",
+                            opacity: caseCreating || !newCaseTitle.trim() ? 0.4 : 1,
+                          }}
+                        >
+                          {caseCreating ? "…" : "创建"}
+                        </button>
+                        <button
+                          type="button"
+                          className="mju-entry-change"
+                          onClick={() => {
+                            setCaseCreateOpen(false);
+                            setCaseCreateError(null);
+                          }}
+                          style={{
+                            ...micro,
+                            border: "none",
+                            background: "transparent",
+                            padding: 0,
+                            color: "var(--text-muted)",
+                            cursor: "pointer",
+                          }}
+                        >
+                          返回
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ padding: 8, borderBottom: "1px solid var(--border)" }}>
+                        <input
+                          autoFocus
+                          value={caseQuery}
+                          onChange={(e) => setCaseQuery(e.target.value)}
+                          placeholder="搜索案件…"
+                          style={{
+                            width: "100%",
+                            boxSizing: "border-box",
+                            border: "1px solid var(--border)",
+                            borderRadius: 2,
+                            padding: "6px 8px",
+                            font: "inherit",
+                            fontSize: 12,
+                            background: "transparent",
+                            color: "var(--text)",
+                            outline: "none",
+                          }}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCaseCreateOpen(true);
+                          setCaseCreateError(null);
+                        }}
+                        style={{
+                          display: "block",
+                          width: "100%",
+                          padding: "9px 12px",
+                          border: "none",
+                          borderBottom: "1px solid var(--border)",
+                          background: "transparent",
+                          color: "var(--accent)",
+                          font: "inherit",
+                          ...micro,
                           textAlign: "left",
+                          cursor: "pointer",
                         }}
                       >
-                        <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {item.title}
-                        </span>
-                        {chipTitle === item.title && (
-                          <span style={{ width: 6, height: 6, flex: "none", background: "var(--accent)" }} />
-                        )}
+                        + 新建案件
                       </button>
-                    ))}
-                  </div>
+                      <div style={{ maxHeight: 320, overflowY: "auto" }}>
+                        {caseQueryLower && menuCases.length === 0 && (
+                          <div style={{ padding: "9px 12px", fontSize: 12, color: "var(--text-dim)" }}>
+                            无匹配案件
+                          </div>
+                        )}
+                        {[...menuCases.map((c) => ({ id: c.id, title: c.title, pin: { kind: "case", value: c } as Pinned })),
+                          { id: "__inbox__", title: INBOX_TITLE, pin: { kind: "inbox" } as Pinned },
+                        ].map((item, i, arr) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            className="mju-entry-item"
+                            onClick={() => selectPin(item.pin)}
+                            style={{
+                              display: "flex",
+                              width: "100%",
+                              alignItems: "center",
+                              gap: 10,
+                              padding: "9px 12px",
+                              border: "none",
+                              borderBottom: i < arr.length - 1 ? "1px solid var(--border)" : "none",
+                              background: "transparent",
+                              color: "var(--text)",
+                              font: "inherit",
+                              fontSize: 12,
+                              cursor: "pointer",
+                              textAlign: "left",
+                            }}
+                          >
+                            <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {item.title}
+                            </span>
+                            {chipTitle === item.title && (
+                              <span style={{ width: 6, height: 6, flex: "none", background: "var(--accent)" }} />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>
