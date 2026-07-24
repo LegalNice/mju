@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import type { Case, Task } from "@/lib/mju-models";
+import type { Case, Task, TaskStatus } from "@/lib/mju-models";
 import type { SessionInfo, SessionTreeNode } from "@/lib/types";
 import type { CaseDocEntry } from "@/app/api/casedocs/route";
 import { encodeFilePathForApi } from "@/lib/file-paths";
@@ -61,6 +61,33 @@ function formatMtime(iso: string): string {
 function treeHasBranch(nodes: SessionTreeNode[]): boolean {
   return nodes.some((n) => n.children.length > 1 || treeHasBranch(n.children));
 }
+
+const STATUS_OPTIONS: TaskStatus[] = ["待办", "进行中", "完成"];
+
+const MENU_STYLE: CSSProperties = {
+  position: "absolute",
+  top: "100%",
+  left: 0,
+  marginTop: 6,
+  minWidth: 140,
+  background: "var(--bg)",
+  border: "1px solid var(--border)",
+  borderRadius: 2,
+  zIndex: 40,
+  padding: "4px 0",
+};
+
+const MENU_ITEM_STYLE: CSSProperties = {
+  display: "block",
+  width: "100%",
+  padding: "7px 12px",
+  border: "none",
+  background: "transparent",
+  color: "var(--text)",
+  fontSize: 12,
+  textAlign: "left",
+  cursor: "pointer",
+};
 
 function PulseSquare() {
   return (
@@ -119,6 +146,12 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const [forkError, setForkError] = useState<string | null>(null);
+
+  // meta 行菜单：状态切换 / 改派案件
+  const [metaMenu, setMetaMenu] = useState<"status" | "reassign" | null>(null);
+  const [metaMenuError, setMetaMenuError] = useState<string | null>(null);
+  const [metaBusy, setMetaBusy] = useState(false);
+  const metaMenuRef = useRef<HTMLDivElement | null>(null);
 
   const selectedPathRef = useRef<string | null>(null);
   selectedPathRef.current = selectedPath;
@@ -181,6 +214,72 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
     },
     [cwd, taskId],
   );
+
+  // 通用任务 PATCH：更新本地 task 状态显示（Board 靠自己轮询刷新）
+  const patchTask = useCallback(
+    async (body: Record<string, unknown>): Promise<boolean> => {
+      const res = await fetch("/api/tasks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cwd, id: taskId, ...body }),
+      });
+      if (!res.ok) return false;
+      const data = (await res.json()) as { task?: Task };
+      if (data.task) {
+        const next = data.task;
+        setTasks((prev) => prev?.map((t) => (t.id === taskId ? next : t)) ?? prev);
+      }
+      return true;
+    },
+    [cwd, taskId],
+  );
+
+  const handleStatusSelect = useCallback(
+    (status: TaskStatus) => {
+      if (!task || status === task.status || metaBusy) return;
+      setMetaBusy(true);
+      setMetaMenuError(null);
+      void patchTask({ status }).then((ok) => {
+        setMetaBusy(false);
+        if (ok) setMetaMenu(null);
+        else setMetaMenuError("状态更新失败");
+      });
+    },
+    [task, metaBusy, patchTask],
+  );
+
+  const handleReassignSelect = useCallback(
+    (nextCaseId: string) => {
+      if (!task || nextCaseId === task.caseId || metaBusy) return;
+      setMetaBusy(true);
+      setMetaMenuError(null);
+      void patchTask({ caseId: nextCaseId }).then((ok) => {
+        setMetaBusy(false);
+        if (!ok) {
+          setMetaMenuError("改派失败");
+          return;
+        }
+        setMetaMenu(null);
+        // 右栏文档属于旧案件：立即清掉，caseId 变化会触发重新拉取
+        setDocs(null);
+        setSelectedPath(null);
+        setDocContent(null);
+      });
+    },
+    [task, metaBusy, patchTask],
+  );
+
+  // 点击 meta 菜单外部时收起
+  useEffect(() => {
+    if (!metaMenu) return;
+    const onDown = (e: MouseEvent) => {
+      if (metaMenuRef.current && !metaMenuRef.current.contains(e.target as Node)) {
+        setMetaMenu(null);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [metaMenu]);
 
   // ---------- 会话 cwd（合成 SessionInfo 用） ----------
 
@@ -443,6 +542,7 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
         {task.title}
       </div>
       <div
+        ref={metaMenuRef}
         style={{
           ...MICRO,
           color: "var(--text-dim)",
@@ -453,7 +553,62 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
           flexWrap: "wrap",
         }}
       >
-        <span>{task.status}</span>
+        <span style={{ position: "relative" }}>
+          <button
+            type="button"
+            onClick={() => {
+              setMetaMenuError(null);
+              setMetaMenu((m) => (m === "status" ? null : "status"));
+            }}
+            style={{
+              ...MICRO,
+              padding: 0,
+              border: "none",
+              background: "transparent",
+              color: "var(--text-dim)",
+              cursor: "pointer",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = "var(--accent)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = "var(--text-dim)";
+            }}
+          >
+            {task.status} ▾
+          </button>
+          {metaMenu === "status" && (
+            <div style={MENU_STYLE}>
+              {STATUS_OPTIONS.map((s) => {
+                const current = s === task.status;
+                return (
+                  <button
+                    key={s}
+                    type="button"
+                    disabled={current}
+                    onClick={() => handleStatusSelect(s)}
+                    style={{
+                      ...MENU_ITEM_STYLE,
+                      color: current ? "var(--text-dim)" : "var(--text)",
+                      cursor: current ? "default" : "pointer",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!current) e.currentTarget.style.background = "var(--bg-hover)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "transparent";
+                    }}
+                  >
+                    {s}
+                  </button>
+                );
+              })}
+              {metaMenuError && (
+                <div style={{ fontSize: 11, color: "var(--accent)", padding: "6px 12px" }}>{metaMenuError}</div>
+              )}
+            </div>
+          )}
+        </span>
         <span>{task.assignee}</span>
         {task.deadline && (
           <span style={{ color: overdue ? "var(--accent)" : undefined }}>
@@ -461,6 +616,59 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
             {overdue ? " · 已逾期" : ""}
           </span>
         )}
+        <span style={{ position: "relative" }}>
+          <button
+            type="button"
+            onClick={() => {
+              setMetaMenuError(null);
+              setMetaMenu((m) => (m === "reassign" ? null : "reassign"));
+            }}
+            style={{
+              ...MICRO,
+              padding: 0,
+              border: "none",
+              background: "transparent",
+              color: "var(--text-muted)",
+              cursor: "pointer",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = "var(--accent)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = "var(--text-muted)";
+            }}
+          >
+            改派 ▾
+          </button>
+          {metaMenu === "reassign" && (
+            <div style={MENU_STYLE}>
+              {cases.filter((c) => c.id !== task.caseId).length === 0 && (
+                <div style={{ fontSize: 11, color: "var(--text-dim)", padding: "7px 12px" }}>没有其它案件</div>
+              )}
+              {cases
+                .filter((c) => c.id !== task.caseId)
+                .map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => handleReassignSelect(c.id)}
+                    style={MENU_ITEM_STYLE}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = "var(--bg-hover)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "transparent";
+                    }}
+                  >
+                    {c.title}
+                  </button>
+                ))}
+              {metaMenuError && (
+                <div style={{ fontSize: 11, color: "var(--accent)", padding: "6px 12px" }}>{metaMenuError}</div>
+              )}
+            </div>
+          )}
+        </span>
         {isRunning && (
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--accent)" }}>
             <PulseSquare />
