@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import type { Case, Task, TaskPriority, TaskStatus } from "@/lib/mju-models";
+import type { Case, Deliverable, DeliverableStatus, DeliverableType, Task, TaskPriority, TaskStatus } from "@/lib/mju-models";
 import type { WorkflowDefinition } from "@/lib/workflows";
 import { AppNav } from "./AppNav";
 
@@ -27,6 +27,47 @@ const PRIORITY_LABEL: Record<TaskPriority, string> = {
   medium: "中",
   low: "低",
 };
+
+const DELIVERABLE_TYPE_LABEL: Record<DeliverableType, string> = {
+  "internal-opinion": "内部意见",
+  "external-opinion": "对外意见",
+  "docx-revision": "修订稿",
+  pleading: "诉讼文书",
+  "evidence-list": "证据清单",
+  "trial-outline": "庭审提纲",
+  "research-report": "检索报告",
+  other: "其他",
+};
+
+const DELIVERABLE_STATUS_LABEL: Record<DeliverableStatus, string> = {
+  draft: "草稿",
+  "internal-review": "内审",
+  "client-review": "客户审",
+  final: "定稿",
+  archived: "归档",
+};
+
+/** draft → internal-review → client-review → final → archived */
+const DELIVERABLE_STATUS_FLOW: DeliverableStatus[] = [
+  "draft",
+  "internal-review",
+  "client-review",
+  "final",
+  "archived",
+];
+
+function deliverableStatusColor(status: DeliverableStatus): string {
+  switch (status) {
+    case "internal-review":
+      return "var(--text-muted)";
+    case "client-review":
+      return "var(--text)";
+    case "final":
+      return "var(--accent)";
+    default: // draft / archived
+      return "var(--text-dim)";
+  }
+}
 
 type WorkflowSummary = WorkflowDefinition & { started: boolean };
 
@@ -256,6 +297,9 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
   const [cases, setCases] = useState<Case[] | null>(null);
   const [tasks, setTasks] = useState<Task[] | null>(null);
   const [workflows, setWorkflows] = useState<WorkflowSummary[] | null>(null);
+  const [deliverables, setDeliverables] = useState<Deliverable[] | null>(null);
+  const [deliverableError, setDeliverableError] = useState<string | null>(null);
+  const [advancingId, setAdvancingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [wfMenuOpen, setWfMenuOpen] = useState(false);
@@ -298,14 +342,26 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
     setWorkflows(data.workflows);
   }, [cwd, caseId]);
 
+  // 当前案件的交付物（API 按 createdAt 倒序）
+  const loadDeliverables = useCallback(async () => {
+    const res = await fetch(
+      `/api/deliverables?cwd=${encodeURIComponent(cwd)}&caseId=${encodeURIComponent(caseId)}`,
+    );
+    if (!res.ok) throw new Error(`deliverables ${res.status}`);
+    const data = (await res.json()) as { deliverables: Deliverable[] };
+    setDeliverables(data.deliverables);
+  }, [cwd, caseId]);
+
   useEffect(() => {
     if (!cwd) {
       setError("missing cwd");
       return;
     }
     setError(null);
-    Promise.all([loadCases(), loadTasks(), loadWorkflows()]).catch(() => setError("load failed"));
-  }, [cwd, loadCases, loadTasks, loadWorkflows]);
+    Promise.all([loadCases(), loadTasks(), loadWorkflows(), loadDeliverables()]).catch(() =>
+      setError("load failed"),
+    );
+  }, [cwd, loadCases, loadTasks, loadWorkflows, loadDeliverables]);
 
   const currentCase = useMemo(
     () => cases?.find((c) => c.id === caseId) ?? null,
@@ -479,6 +535,35 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
       }
     },
     [cwd, loadTasks, runningSessionIds],
+  );
+
+  // 交付物状态推进：点击 chip 进入下一状态（archived 不可再点），
+  // 成功用响应更新本地，失败在交付物区底部显示错误行
+  const advanceDeliverable = useCallback(
+    async (deliverable: Deliverable) => {
+      const index = DELIVERABLE_STATUS_FLOW.indexOf(deliverable.status);
+      const next = DELIVERABLE_STATUS_FLOW[index + 1];
+      if (!next || advancingId) return;
+      setAdvancingId(deliverable.id);
+      setDeliverableError(null);
+      try {
+        const res = await fetch("/api/deliverables", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cwd, id: deliverable.id, status: next }),
+        });
+        if (!res.ok) throw new Error(`patch deliverable ${res.status}`);
+        const data = (await res.json()) as { deliverable: Deliverable };
+        setDeliverables((list) =>
+          (list ?? []).map((d) => (d.id === data.deliverable.id ? data.deliverable : d)),
+        );
+      } catch {
+        setDeliverableError("状态更新失败，请重试");
+      } finally {
+        setAdvancingId(null);
+      }
+    },
+    [cwd, advancingId],
   );
 
   // 选择工作流：先开模态（任务清单加载中），再拉 preview
@@ -884,6 +969,83 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
           );
         })}
       </div>
+
+      {/* 交付物 */}
+      {deliverables && deliverables.length > 0 && (
+        <section style={{ marginTop: 32 }}>
+          <h2
+            style={{
+              ...MICRO,
+              color: "var(--text-dim)",
+              paddingBottom: 8,
+              borderBottom: "1px solid var(--border)",
+              display: "flex",
+              justifyContent: "space-between",
+              margin: 0,
+            }}
+          >
+            <span>交付物</span>
+            <span>{deliverables.length}</span>
+          </h2>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 12 }}>
+            {deliverables.map((d) => {
+              const archived = d.status === "archived";
+              const busy = advancingId === d.id;
+              return (
+                <div
+                  key={d.id}
+                  style={{
+                    width: 220,
+                    border: "1px solid var(--border)",
+                    borderRadius: 2,
+                    padding: "10px 12px",
+                    background: "var(--bg)",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontWeight: 600,
+                      fontSize: 13,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {d.title}
+                  </div>
+                  <div style={{ ...MICRO, letterSpacing: "0.06em", color: "var(--text-dim)", marginTop: 4 }}>
+                    {DELIVERABLE_TYPE_LABEL[d.type] ?? d.type} · v{d.version}
+                  </div>
+                  <div style={{ marginTop: 8 }}>
+                    <button
+                      type="button"
+                      disabled={archived || busy}
+                      title={archived ? "已归档" : "点击推进状态"}
+                      onClick={() => advanceDeliverable(d)}
+                      style={{
+                        ...MICRO,
+                        border: `1px solid ${deliverableStatusColor(d.status)}`,
+                        borderRadius: 2,
+                        padding: "2px 6px",
+                        background: "transparent",
+                        color: deliverableStatusColor(d.status),
+                        textDecoration: archived ? "line-through" : "none",
+                        cursor: archived || busy ? "default" : "pointer",
+                        opacity: busy ? 0.5 : 1,
+                      }}
+                    >
+                      {DELIVERABLE_STATUS_LABEL[d.status]}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {deliverableError && (
+            <div style={{ fontSize: 11, color: "var(--accent)", marginTop: 8 }}>{deliverableError}</div>
+          )}
+        </section>
+      )}
 
       {/* 工作流预览模态 */}
       {preview && (
