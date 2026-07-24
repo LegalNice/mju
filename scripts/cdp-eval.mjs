@@ -25,6 +25,6 @@ await new Promise((r) => { ws.onopen = r; });
 await send("Page.enable");
 await send("Page.navigate", { url });
 await sleep(Number(settleMs));
-const out = await send("Runtime.evaluate", { expression: expr, returnByValue: true });
+const out = await send("Runtime.evaluate", { expression: expr, returnByValue: true, awaitPromise: true });
 console.log(JSON.stringify(out.result?.result?.value ?? out, null, 1));
 ws.close(); chrome.kill(); process.exit(0);

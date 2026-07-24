@@ -278,6 +278,8 @@ export function EntryPage() {
   const [cases, setCases] = useState<MjuCase[]>([]);
   const [text, setText] = useState("");
   const [detected, setDetected] = useState<MjuCase | null>(null);
+  const [aiDetected, setAiDetected] = useState<MjuCase | null>(null);
+  const [classifying, setClassifying] = useState(false);
   const [pinned, setPinned] = useState<Pinned>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [modelLabel, setModelLabel] = useState<string | null>(null);
@@ -292,6 +294,17 @@ export function EntryPage() {
   const detectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const spotRef = useRef<HTMLDivElement | null>(null);
+  const classifyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Incremented on every text change / pin / project switch — stale classify responses check it */
+  const classifySeq = useRef(0);
+  /** Latest local-match result for the current text (mirrors `detected` for timer callbacks) */
+  const detectedRef = useRef<MjuCase | null>(null);
+  const pinnedRef = useRef<Pinned>(null);
+  const casesRef = useRef<MjuCase[]>([]);
+  /** Last instruction text sent to /api/classify — avoids re-asking for identical text */
+  const lastClassifyText = useRef("");
+  /** In-flight classify request, so launch() can await it instead of racing to the inbox */
+  const inflightClassify = useRef<{ text: string; promise: Promise<MjuCase | null> } | null>(null);
 
   // Load projects once; prefer the persisted cwd when it still exists.
   useEffect(() => {
@@ -321,7 +334,14 @@ export function EntryPage() {
     if (!project) return;
     localStorage.setItem(LS_CWD, project.cwd);
     setDetected(null);
+    detectedRef.current = null;
     setPinned(null);
+    pinnedRef.current = null;
+    setAiDetected(null);
+    setClassifying(false);
+    classifySeq.current++;
+    lastClassifyText.current = "";
+    if (classifyTimer.current) clearTimeout(classifyTimer.current);
     setMenuOpen(false);
 
     let cancelled = false;
@@ -369,6 +389,12 @@ export function EntryPage() {
     return () => document.removeEventListener("mousedown", onDown);
   }, [menuOpen]);
 
+  // Keep a ref mirror of the loaded cases so async classify callbacks read
+  // the current list without re-creating timers on every cases change.
+  useEffect(() => {
+    casesRef.current = cases;
+  }, [cases]);
+
   const scheduleDetect = useCallback(
     (value: string) => {
       if (detectTimer.current) clearTimeout(detectTimer.current);
@@ -376,24 +402,85 @@ export function EntryPage() {
         // A manual override suspends auto-detection until the text is cleared.
         if (pinned) return;
         const trimmed = value.trim();
-        setDetected(trimmed ? detectCase(cases, trimmed) : null);
+        const result = trimmed ? detectCase(cases, trimmed) : null;
+        detectedRef.current = result;
+        setDetected(result);
       }, 200);
     },
     [cases, pinned],
   );
 
+  /**
+   * AI fallback: fires only when the local substring match found nothing, the
+   * instruction is at least 8 chars, and the text has been still for 800ms.
+   * Responses are dropped when the text changed (or a pin was set) meanwhile.
+   */
+  const runClassify = useCallback(
+    (value: string) => {
+      const trimmed = value.trim();
+      if (!project || trimmed.length < 8) return;
+      if (detectedRef.current) return; // local match already won
+      if (trimmed === lastClassifyText.current) return; // same text — don't re-ask
+      lastClassifyText.current = trimmed;
+      const seq = ++classifySeq.current;
+      setClassifying(true);
+      const promise = (async (): Promise<MjuCase | null> => {
+        try {
+          const res = await fetch("/api/classify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ cwd: project.cwd, instruction: trimmed }),
+          });
+          if (!res.ok) return null;
+          const data = (await res.json()) as { caseId?: string | null };
+          if (!data.caseId) return null;
+          return casesRef.current.find((c) => c.id === data.caseId) ?? null;
+        } catch {
+          return null;
+        }
+      })();
+      inflightClassify.current = { text: trimmed, promise };
+      void promise.then((result) => {
+        if (inflightClassify.current?.promise === promise) inflightClassify.current = null;
+        if (seq !== classifySeq.current) return; // stale — text changed or pinned meanwhile
+        setClassifying(false);
+        setAiDetected(result);
+      });
+    },
+    [project],
+  );
+
+  const scheduleClassify = useCallback(
+    (value: string) => {
+      if (classifyTimer.current) clearTimeout(classifyTimer.current);
+      classifyTimer.current = setTimeout(() => {
+        if (pinnedRef.current) return; // manual override suspends the AI fallback
+        runClassify(value);
+      }, 800);
+    },
+    [runClassify],
+  );
+
   const onChangeText = (value: string) => {
     setText(value);
     setError(null);
+    // Any text change invalidates an in-flight classify for older text.
+    classifySeq.current++;
+    setClassifying(false);
+    if (classifyTimer.current) clearTimeout(classifyTimer.current);
     if (!value.trim()) {
       // Clearing the text releases the manual override and resumes auto-detection.
       setPinned(null);
+      pinnedRef.current = null;
       setDetected(null);
+      detectedRef.current = null;
+      setAiDetected(null);
       setMenuOpen(false);
       if (detectTimer.current) clearTimeout(detectTimer.current);
       return;
     }
     scheduleDetect(value);
+    scheduleClassify(value);
   };
 
   const ensureInbox = useCallback(async (): Promise<MjuCase> => {
@@ -415,7 +502,9 @@ export function EntryPage() {
   const chipTitle = pinned?.kind === "case" ? pinned.value.title
     : pinned?.kind === "inbox" ? INBOX_TITLE
     : detected ? detected.title
+    : aiDetected ? aiDetected.title
     : INBOX_TITLE;
+  const showClassifying = !pinned && !detected && !aiDetected && classifying;
   const showChip = Boolean(text.trim());
   const todayStr = localDateString(new Date());
 
@@ -433,9 +522,18 @@ export function EntryPage() {
     setLaunching(true);
     setError(null);
     try {
-      const targetCase = pinned?.kind === "case" ? pinned.value
-        : pinned?.kind === "inbox" ? await ensureInbox()
-        : detected ?? (await ensureInbox());
+      let targetCase: MjuCase;
+      if (pinned?.kind === "case") targetCase = pinned.value;
+      else if (pinned?.kind === "inbox") targetCase = await ensureInbox();
+      else if (detected) targetCase = detected;
+      else if (aiDetected) targetCase = aiDetected;
+      else {
+        // A classify for this exact instruction may still be in flight — await
+        // it instead of racing the task into the inbox prematurely.
+        const pending = inflightClassify.current;
+        const aiResult = pending && pending.text === instruction ? await pending.promise : null;
+        targetCase = aiResult ?? (await ensureInbox());
+      }
 
       const agentRes = await fetch("/api/agent/new", {
         method: "POST",
@@ -689,29 +787,35 @@ export function EntryPage() {
                 pointerEvents: showChip ? "auto" : "none",
               }}
             >
-              <span>识别为</span>
-              <span
-                style={{
-                  fontWeight: 700,
-                  color: "var(--text)",
-                  borderBottom: "2px solid var(--accent)",
-                  paddingBottom: 1,
-                }}
-              >
-                {chipTitle}
-              </span>
-              <span
-                className="mju-entry-change"
-                onClick={() => setMenuOpen((v) => !v)}
-                style={{
-                  color: "var(--text-dim)",
-                  cursor: "pointer",
-                  textDecoration: "underline",
-                  textUnderlineOffset: 3,
-                }}
-              >
-                更改
-              </span>
+              {showClassifying ? (
+                <span style={{ color: "var(--text-dim)" }}>识别中…</span>
+              ) : (
+                <>
+                  <span>识别为</span>
+                  <span
+                    style={{
+                      fontWeight: 700,
+                      color: "var(--text)",
+                      borderBottom: "2px solid var(--accent)",
+                      paddingBottom: 1,
+                    }}
+                  >
+                    {chipTitle}
+                  </span>
+                  <span
+                    className="mju-entry-change"
+                    onClick={() => setMenuOpen((v) => !v)}
+                    style={{
+                      color: "var(--text-dim)",
+                      cursor: "pointer",
+                      textDecoration: "underline",
+                      textUnderlineOffset: 3,
+                    }}
+                  >
+                    更改
+                  </span>
+                </>
+              )}
 
               {menuOpen && (
                 <div
@@ -739,6 +843,11 @@ export function EntryPage() {
                       className="mju-entry-item"
                       onClick={() => {
                         setPinned(item.pin);
+                        pinnedRef.current = item.pin;
+                        // Manual override cancels any pending AI fallback.
+                        classifySeq.current++;
+                        setClassifying(false);
+                        if (classifyTimer.current) clearTimeout(classifyTimer.current);
                         setMenuOpen(false);
                       }}
                       style={{

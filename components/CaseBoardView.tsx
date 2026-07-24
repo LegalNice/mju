@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import type { Case, Task, TaskStatus } from "@/lib/mju-models";
+import type { Case, Task, TaskPriority, TaskStatus } from "@/lib/mju-models";
+import type { WorkflowDefinition } from "@/lib/workflows";
 import { AppNav } from "./AppNav";
 
 const MICRO: CSSProperties = {
@@ -20,6 +21,19 @@ const CASE_TYPE_LABEL: Record<Case["type"], string> = {
   litigation: "诉讼",
   advisory: "顾问",
 };
+
+const PRIORITY_LABEL: Record<TaskPriority, string> = {
+  high: "高",
+  medium: "中",
+  low: "低",
+};
+
+type WorkflowSummary = WorkflowDefinition & { started: boolean };
+
+interface WorkflowPreview {
+  workflow: WorkflowDefinition;
+  tasks: Task[] | null; // null = 预览加载中
+}
 
 function todayString(): string {
   const now = new Date();
@@ -43,6 +57,154 @@ function CenteredNote({ text }: { text: string }) {
   );
 }
 
+/** 任务菜单里的一行：自带 hover 底色，disabled 时置灰不可点 */
+function MenuRow({
+  onClick,
+  disabled,
+  micro,
+  children,
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  micro?: boolean;
+  children: React.ReactNode;
+}) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (!disabled) onClick();
+      }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        display: "block",
+        width: "100%",
+        textAlign: "left",
+        padding: micro ? "7px 12px" : "8px 12px",
+        border: "none",
+        background: hover && !disabled ? "var(--bg-hover)" : "transparent",
+        cursor: disabled ? "default" : "pointer",
+        color: disabled ? "var(--text-dim)" : "var(--text)",
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        ...(micro ? MICRO : { fontSize: 12 }),
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** 卡片右上角的 ⋯ 触发按钮：hover 卡片时淡入，自身 hover 变 accent */
+function DotsButton({ visible, onClick }: { visible: boolean; onClick: () => void }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      type="button"
+      aria-label="任务操作"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        position: "absolute",
+        top: 6,
+        right: 8,
+        border: "none",
+        background: "transparent",
+        cursor: "pointer",
+        padding: "2px 4px",
+        fontSize: 12,
+        fontWeight: 700,
+        letterSpacing: "0.06em",
+        lineHeight: 1,
+        color: hover ? "var(--accent)" : "var(--text-muted)",
+        opacity: visible ? 1 : 0,
+        pointerEvents: visible ? "auto" : "none",
+        transition: "opacity .15s",
+      }}
+    >
+      ⋯
+    </button>
+  );
+}
+
+/** 刊头 micro 文本按钮：muted → hover accent */
+function TextButton({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        ...MICRO,
+        border: "none",
+        background: "transparent",
+        cursor: "pointer",
+        padding: 0,
+        color: hover ? "var(--accent)" : "var(--text-muted)",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** 模态底部按钮：outline（描边）或 accent（实心） */
+function ModalButton({
+  onClick,
+  variant,
+  disabled,
+  children,
+}: {
+  onClick: () => void;
+  variant: "outline" | "accent";
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  const [hover, setHover] = useState(false);
+  const accent = variant === "accent";
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        ...MICRO,
+        padding: "8px 16px",
+        borderRadius: 2,
+        border: accent ? "1px solid var(--accent)" : "1px solid var(--border)",
+        background: accent
+          ? hover && !disabled
+            ? "var(--accent-hover)"
+            : "var(--accent)"
+          : hover && !disabled
+            ? "var(--bg-hover)"
+            : "transparent",
+        color: accent ? "#ffffff" : "var(--text)",
+        cursor: disabled ? "default" : "pointer",
+        opacity: disabled ? 0.6 : 1,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function CaseBoardView({ caseId }: { caseId: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -51,11 +213,21 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
 
   const [cases, setCases] = useState<Case[] | null>(null);
   const [tasks, setTasks] = useState<Task[] | null>(null);
+  const [workflows, setWorkflows] = useState<WorkflowSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [wfMenuOpen, setWfMenuOpen] = useState(false);
+  const [preview, setPreview] = useState<WorkflowPreview | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
   const [hoveredTaskId, setHoveredTaskId] = useState<string | null>(null);
+  const [openTaskMenuId, setOpenTaskMenuId] = useState<string | null>(null);
+  const [taskMenuShown, setTaskMenuShown] = useState(false);
+  const [taskMenuError, setTaskMenuError] = useState<string | null>(null);
   const [runningSessionIds, setRunningSessionIds] = useState<Set<string>>(new Set());
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const wfMenuRef = useRef<HTMLDivElement | null>(null);
+  const taskMenuRef = useRef<HTMLDivElement | null>(null);
 
   const loadCases = useCallback(async () => {
     const res = await fetch(`/api/cases?cwd=${encodeURIComponent(cwd)}`);
@@ -73,14 +245,24 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
     setTasks(data.tasks);
   }, [cwd]);
 
+  // 当前案件可用的工作流（按案件类型过滤，带 started 标记）
+  const loadWorkflows = useCallback(async () => {
+    const res = await fetch(
+      `/api/workflows?cwd=${encodeURIComponent(cwd)}&caseId=${encodeURIComponent(caseId)}`,
+    );
+    if (!res.ok) throw new Error(`workflows ${res.status}`);
+    const data = (await res.json()) as { workflows: WorkflowSummary[] };
+    setWorkflows(data.workflows);
+  }, [cwd, caseId]);
+
   useEffect(() => {
     if (!cwd) {
       setError("missing cwd");
       return;
     }
     setError(null);
-    Promise.all([loadCases(), loadTasks()]).catch(() => setError("load failed"));
-  }, [cwd, loadCases, loadTasks]);
+    Promise.all([loadCases(), loadTasks(), loadWorkflows()]).catch(() => setError("load failed"));
+  }, [cwd, loadCases, loadTasks, loadWorkflows]);
 
   const currentCase = useMemo(
     () => cases?.find((c) => c.id === caseId) ?? null,
@@ -149,6 +331,120 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
     return () => document.removeEventListener("mousedown", onDown);
   }, [menuOpen]);
 
+  // 点击外部时收起工作流下拉
+  useEffect(() => {
+    if (!wfMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (wfMenuRef.current && !wfMenuRef.current.contains(e.target as Node)) {
+        setWfMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [wfMenuOpen]);
+
+  // 点击卡片外部时收起任务操作菜单
+  useEffect(() => {
+    if (!openTaskMenuId) return;
+    const onDown = (e: MouseEvent) => {
+      if (taskMenuRef.current && !taskMenuRef.current.contains(e.target as Node)) {
+        setOpenTaskMenuId(null);
+        setTaskMenuError(null);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [openTaskMenuId]);
+
+  // 菜单挂载后下一帧淡入（opacity transition）
+  useEffect(() => {
+    if (!openTaskMenuId) {
+      setTaskMenuShown(false);
+      return;
+    }
+    const raf = requestAnimationFrame(() => setTaskMenuShown(true));
+    return () => cancelAnimationFrame(raf);
+  }, [openTaskMenuId]);
+
+  const toggleTaskMenu = useCallback((taskId: string) => {
+    setOpenTaskMenuId((open) => (open === taskId ? null : taskId));
+    setTaskMenuError(null);
+  }, []);
+
+  // 状态流转 / 改派案件：成功后关闭菜单并重新拉取任务列表；
+  // 失败时错误文本显示在菜单内，菜单保持打开。
+  const patchTask = useCallback(
+    async (taskId: string, patch: { status?: TaskStatus; caseId?: string }) => {
+      try {
+        const res = await fetch("/api/tasks", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cwd, id: taskId, ...patch }),
+        });
+        if (!res.ok) throw new Error(`patch ${res.status}`);
+        setOpenTaskMenuId(null);
+        setTaskMenuError(null);
+        await loadTasks();
+      } catch {
+        setTaskMenuError("操作失败，请重试");
+      }
+    },
+    [cwd, loadTasks],
+  );
+
+  // 选择工作流：先开模态（任务清单加载中），再拉 preview
+  const openPreview = useCallback(
+    async (workflow: WorkflowSummary) => {
+      setWfMenuOpen(false);
+      setPreview({ workflow, tasks: null });
+      setPreviewError(null);
+      try {
+        const res = await fetch("/api/workflows", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cwd, caseId, workflowId: workflow.id, action: "preview" }),
+        });
+        if (!res.ok) throw new Error(`preview ${res.status}`);
+        const data = (await res.json()) as { workflow: WorkflowDefinition; tasks: Task[] };
+        setPreview({ workflow: data.workflow, tasks: data.tasks });
+      } catch {
+        setPreviewError("预览加载失败，请重试");
+      }
+    },
+    [cwd, caseId],
+  );
+
+  const closePreview = useCallback(() => {
+    setPreview(null);
+    setPreviewError(null);
+    setStarting(false);
+  }, []);
+
+  // 确认启动：201 关闭模态并刷新任务/工作流；409 或其他失败在模态内提示
+  const startWorkflowRun = useCallback(async () => {
+    if (!preview || starting) return;
+    setStarting(true);
+    setPreviewError(null);
+    try {
+      const res = await fetch("/api/workflows", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cwd, caseId, workflowId: preview.workflow.id, action: "start" }),
+      });
+      if (res.status === 409) {
+        setPreviewError("该工作流已启动过，不能重复启动");
+        setStarting(false);
+        return;
+      }
+      if (!res.ok) throw new Error(`start ${res.status}`);
+      closePreview();
+      await Promise.all([loadTasks(), loadWorkflows()]);
+    } catch {
+      setPreviewError("启动失败，请重试");
+      setStarting(false);
+    }
+  }, [preview, starting, cwd, caseId, closePreview, loadTasks, loadWorkflows]);
+
   const boardHref = `/board/${caseId}?cwd=${encodeURIComponent(cwd)}`;
   const today = todayString();
 
@@ -191,7 +487,7 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
 
   return shell(
     <main style={{ flex: 1, overflowY: "auto", padding: 28 }}>
-      {/* Masthead：案件切换 + 类型/阶段 */}
+      {/* Masthead：案件切换 + 工作流启动器 + 类型/阶段 */}
       <div
         style={{
           display: "flex",
@@ -265,9 +561,56 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
             </div>
           )}
         </div>
-        <span style={{ ...MICRO, color: "var(--text-dim)" }}>
-          {CASE_TYPE_LABEL[currentCase.type]} · {currentCase.stage}
-        </span>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 16 }}>
+          {workflows && workflows.length > 0 && (
+            <div ref={wfMenuRef} style={{ position: "relative" }}>
+              <TextButton onClick={() => setWfMenuOpen((open) => !open)}>启动工作流 ▾</TextButton>
+              {wfMenuOpen && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "100%",
+                    right: 0,
+                    marginTop: 8,
+                    width: 240,
+                    background: "var(--bg)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 2,
+                    zIndex: 30,
+                    padding: "4px 0",
+                  }}
+                >
+                  {workflows.map((wf) => (
+                    <MenuRow
+                      key={wf.id}
+                      disabled={wf.started}
+                      onClick={() => openPreview(wf)}
+                    >
+                      <span
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "baseline",
+                          gap: 10,
+                        }}
+                      >
+                        <span>{wf.name}</span>
+                        {wf.started && (
+                          <span style={{ ...MICRO, letterSpacing: "0.06em", color: "var(--text-dim)" }}>
+                            已启动
+                          </span>
+                        )}
+                      </span>
+                    </MenuRow>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          <span style={{ ...MICRO, color: "var(--text-dim)" }}>
+            {CASE_TYPE_LABEL[currentCase.type]} · {currentCase.stage}
+          </span>
+        </div>
       </div>
 
       {/* 三列看板 */}
@@ -294,77 +637,233 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
                 const isNew = task.id === newTaskId;
                 const isRunning = Boolean(task.sessionId && runningSessionIds.has(task.sessionId));
                 const overdue = Boolean(task.deadline && task.deadline < today && task.status !== "完成");
+                const menuOpenForTask = openTaskMenuId === task.id;
                 return (
-                  <Link
+                  // 卡片包一层 relative 容器：Link 保持纯净，⋯ 按钮与菜单作为
+                  // 绝对定位的兄弟节点，避免 a 内嵌 button 的非法嵌套。
+                  <div
                     key={task.id}
-                    href={`/task/${task.id}?cwd=${encodeURIComponent(cwd)}`}
+                    ref={menuOpenForTask ? taskMenuRef : undefined}
+                    style={{ position: "relative", marginTop: 10 }}
                     onMouseEnter={() => setHoveredTaskId(task.id)}
                     onMouseLeave={() => setHoveredTaskId(null)}
-                    style={{
-                      display: "block",
-                      border: "1px solid var(--border)",
-                      borderColor: hoveredTaskId === task.id ? "var(--text)" : "var(--border)",
-                      borderRadius: 2,
-                      padding: "12px 14px",
-                      marginTop: 10,
-                      background: "var(--bg)",
-                      color: "var(--text)",
-                      textDecoration: "none",
-                      transition: "border-color .12s",
-                      ...(isNew
-                        ? {
-                            // inset box-shadow instead of borderLeft: mixing border
-                            // shorthand with border-left longhand trips React's
-                            // style-conflict warning on rerender.
-                            boxShadow: "inset 3px 0 0 var(--accent)",
-                            animation: "mju-card-in .55s cubic-bezier(.16,1,.3,1) both",
-                          }
-                        : {}),
-                    }}
                   >
-                    <div style={{ fontWeight: 600, fontSize: 13 }}>{task.title}</div>
-                    <div
+                    <Link
+                      href={`/task/${task.id}?cwd=${encodeURIComponent(cwd)}`}
                       style={{
-                        color: "var(--text-dim)",
-                        fontSize: 11,
-                        marginTop: 5,
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
+                        display: "block",
+                        border: "1px solid var(--border)",
+                        borderColor: hoveredTaskId === task.id ? "var(--text)" : "var(--border)",
+                        borderRadius: 2,
+                        padding: "12px 14px",
+                        background: "var(--bg)",
+                        color: "var(--text)",
+                        textDecoration: "none",
+                        transition: "border-color .12s",
+                        ...(isNew
+                          ? {
+                              // inset box-shadow instead of borderLeft: mixing border
+                              // shorthand with border-left longhand trips React's
+                              // style-conflict warning on rerender.
+                              boxShadow: "inset 3px 0 0 var(--accent)",
+                              animation: "mju-card-in .55s cubic-bezier(.16,1,.3,1) both",
+                            }
+                          : {}),
                       }}
                     >
-                      <span>{task.assignee}</span>
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                        {isRunning && (
-                          <>
-                            <span
-                              style={{
-                                display: "inline-block",
-                                width: 6,
-                                height: 6,
-                                background: "var(--accent)",
-                                animation: "pulse 1.2s infinite",
-                              }}
-                            />
-                            <span style={{ ...MICRO, letterSpacing: "0.06em", color: "var(--accent)" }}>
-                              执行中
+                      <div style={{ fontWeight: 600, fontSize: 13, paddingRight: 20 }}>{task.title}</div>
+                      <div
+                        style={{
+                          color: "var(--text-dim)",
+                          fontSize: 11,
+                          marginTop: 5,
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                        }}
+                      >
+                        <span>{task.assignee}</span>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                          {isRunning && (
+                            <>
+                              <span
+                                style={{
+                                  display: "inline-block",
+                                  width: 6,
+                                  height: 6,
+                                  background: "var(--accent)",
+                                  animation: "pulse 1.2s infinite",
+                                }}
+                              />
+                              <span style={{ ...MICRO, letterSpacing: "0.06em", color: "var(--accent)" }}>
+                                执行中
+                              </span>
+                            </>
+                          )}
+                          {task.deadline && (
+                            <span style={{ color: overdue ? "var(--accent)" : undefined }}>
+                              {formatDeadline(task.deadline)}
                             </span>
-                          </>
+                          )}
+                        </span>
+                      </div>
+                    </Link>
+                    <DotsButton
+                      visible={hoveredTaskId === task.id || menuOpenForTask}
+                      onClick={() => toggleTaskMenu(task.id)}
+                    />
+                    {menuOpenForTask && (
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                          position: "absolute",
+                          top: 28,
+                          right: 0,
+                          width: 200,
+                          background: "var(--bg)",
+                          border: "1px solid var(--border)",
+                          borderRadius: 2,
+                          zIndex: 30,
+                          padding: "6px 0",
+                          maxHeight: 300,
+                          overflowY: "auto",
+                          opacity: taskMenuShown ? 1 : 0,
+                          transition: "opacity .15s",
+                        }}
+                      >
+                        <div style={{ ...MICRO, color: "var(--text-dim)", padding: "4px 12px" }}>状态</div>
+                        {COLUMNS.map((s) => (
+                          <MenuRow
+                            key={s}
+                            micro
+                            disabled={task.status === s}
+                            onClick={() => patchTask(task.id, { status: s })}
+                          >
+                            {s}
+                          </MenuRow>
+                        ))}
+                        <div style={{ height: 1, background: "var(--border)", margin: "4px 0" }} />
+                        <div style={{ ...MICRO, color: "var(--text-dim)", padding: "4px 12px" }}>改派到</div>
+                        {(cases ?? [])
+                          .filter((c) => c.id !== caseId)
+                          .map((c) => (
+                            <MenuRow key={c.id} onClick={() => patchTask(task.id, { caseId: c.id })}>
+                              {c.title}
+                            </MenuRow>
+                          ))}
+                        {taskMenuError && (
+                          <div style={{ fontSize: 11, color: "var(--accent)", padding: "6px 12px 4px" }}>
+                            {taskMenuError}
+                          </div>
                         )}
-                        {task.deadline && (
-                          <span style={{ color: overdue ? "var(--accent)" : undefined }}>
-                            {formatDeadline(task.deadline)}
-                          </span>
-                        )}
-                      </span>
-                    </div>
-                  </Link>
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </section>
           );
         })}
       </div>
+
+      {/* 工作流预览模态 */}
+      {preview && (
+        <div
+          onClick={closePreview}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 100,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+            background: "rgba(0,0,0,0.18)",
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(520px, 100%)",
+              border: "1px solid var(--border)",
+              borderRadius: 2,
+              background: "var(--bg)",
+              boxShadow: "0 20px 60px rgba(0,0,0,0.28)",
+              overflow: "hidden",
+            }}
+          >
+            <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--border)" }}>
+              <div style={{ fontSize: 15, fontWeight: 700 }}>{preview.workflow.name}</div>
+              <div style={{ ...MICRO, color: "var(--text-dim)", marginTop: 5 }}>
+                {preview.tasks
+                  ? `将为「${currentCase.title}」创建 ${preview.tasks.length} 项任务`
+                  : "加载中…"}
+              </div>
+            </div>
+            <div style={{ padding: "6px 16px", maxHeight: "50vh", overflowY: "auto" }}>
+              {preview.tasks?.map((task, index) => (
+                <div
+                  key={task.id ?? index}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "baseline",
+                    gap: 14,
+                    padding: "9px 0",
+                    borderBottom:
+                      index < (preview.tasks?.length ?? 0) - 1 ? "1px solid var(--border)" : "none",
+                  }}
+                >
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>
+                    <span
+                      style={{
+                        color: "var(--text-dim)",
+                        fontSize: 11,
+                        fontVariantNumeric: "tabular-nums",
+                        marginRight: 10,
+                      }}
+                    >
+                      {String(index + 1).padStart(2, "0")}
+                    </span>
+                    {task.title}
+                  </span>
+                  <span style={{ fontSize: 11, color: "var(--text-dim)", whiteSpace: "nowrap" }}>
+                    {task.assignee}
+                    {task.priority ? ` · ${PRIORITY_LABEL[task.priority]}` : ""}
+                    {task.deadline ? ` · ${formatDeadline(task.deadline)}` : ""}
+                  </span>
+                </div>
+              ))}
+            </div>
+            {previewError && (
+              <div style={{ fontSize: 11, color: "var(--accent)", padding: "4px 16px 0" }}>
+                {previewError}
+              </div>
+            )}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: 10,
+                padding: "12px 16px 14px",
+              }}
+            >
+              <ModalButton variant="outline" onClick={closePreview}>
+                取消
+              </ModalButton>
+              <ModalButton
+                variant="accent"
+                disabled={!preview.tasks || starting}
+                onClick={startWorkflowRun}
+              >
+                {starting ? "启动中…" : "确认启动"}
+              </ModalButton>
+            </div>
+          </div>
+        </div>
+      )}
     </main>,
   );
 }
