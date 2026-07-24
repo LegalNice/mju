@@ -2,12 +2,14 @@ import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { NextResponse } from "next/server";
 import { readStore, writeStore, ensureInboxCase } from "@/lib/mju-store";
+import { hasCanonicalStructure } from "@/lib/mju-guidance";
 import type { Case, CaseType } from "@/lib/mju-models";
 
 export const runtime = "nodejs";
 
 function getCaseBaseDir(cwd: string, type: CaseType, isObsidian: boolean): string {
-  if (isObsidian) {
+  // Canonical ops/ layout applies to Obsidian vaults and plain folders alike.
+  if (isObsidian || hasCanonicalStructure(cwd)) {
     return type === "litigation"
       ? join(cwd, "ops", "cases", "案卷")
       : join(cwd, "ops", "projects", "活跃项目");
