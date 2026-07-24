@@ -265,7 +265,30 @@ interface Deliverable {
 
 ---
 
-## 第四阶段：交付物与 DOCX 生成 ⬜ 未开始
+## 第四阶段：交付物与 DOCX 生成 🟡 管道已完成
+
+### 4.1 交付物管理 ✅
+
+- `app/api/deliverables/route.ts`：GET/POST/PATCH/DELETE（状态机 draft → internal-review → client-review → final → archived，版本号）
+- 交付物列表 UI（Board/子页展示）待后续
+
+### 4.2 Markdown → DOCX 管道 ✅
+
+- `app/api/deliverables/generate/route.ts`：pandoc 本机执行（无需新增 npm 依赖）；输出与源 md 同目录、重名自动 `-2`；sourcePath 强制限制在案件文件夹内
+- 模板：`templates/legal/*.docx` 经 `--reference-doc` 注入，GET 返回可用模板列表
+- 生成后自动登记 Deliverable 并回写 `task.deliverablePath`
+- 任务子页右栏文档行 hover 出 `DOCX` 按钮（有模板时浮层选择）→ 导出 → `已导出 ✓` + 相对路径反馈
+
+### 同批完成：任务中断与删除
+
+- Board 卡片 ⋯ 菜单：`中断执行`（运行中可点，POST {type:"abort"}）+ `删除任务`（两步确认，运行中先 abort 再删）
+- 任务子页 meta 行：`中断`（运行中显示）+ `删除`（两步确认后返回 Board）
+
+### 验证
+
+- deliverables CRUD 测试通过；pandoc 生成经 `file` 验证为真 Word 文档；Board 删除流程与 DOCX 按钮均 CDP 端到端实测
+
+---
 
 ### 4.1 交付物管理
 

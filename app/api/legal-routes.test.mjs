@@ -16,6 +16,7 @@ const deadlinesRoute = await jiti.import("./deadlines/route.ts");
 const schedulesRoute = await jiti.import("./schedules/route.ts");
 const workflowsRoute = await jiti.import("./workflows/route.ts");
 const projectsRoute = await jiti.import("./projects/route.ts");
+const deliverablesRoute = await jiti.import("./deliverables/route.ts");
 
 function url(path, query = {}) {
   const params = new URLSearchParams(query);
@@ -228,4 +229,36 @@ test("lists initialized projects with decoded cwd", async (t) => {
   assert.ok(found, "project should be discoverable by its real cwd");
   assert.equal(found.name, "API test");
   assert.equal(found.caseCount, 1);
+});
+
+test("runs deliverable CRUD with validation", async (t) => {
+  const cwd = makeProject(t);
+  const caseItem = await createCase(cwd);
+
+  const created = await call(deliverablesRoute.POST, "/api/deliverables", {
+    method: "POST",
+    body: { cwd, caseId: caseItem.id, title: "法律意见书", filePath: "/tmp/out.docx", type: "external-opinion" },
+  });
+  assert.equal(created.status, 200);
+  assert.equal(created.body.deliverable.status, "draft");
+  assert.equal(created.body.deliverable.version, 1);
+
+  const badStatus = await call(deliverablesRoute.PATCH, "/api/deliverables", {
+    method: "PATCH", body: { cwd, id: created.body.deliverable.id, status: "weird" },
+  });
+  assert.equal(badStatus.status, 400);
+
+  const updated = await call(deliverablesRoute.PATCH, "/api/deliverables", {
+    method: "PATCH", body: { cwd, id: created.body.deliverable.id, status: "final", version: 2 },
+  });
+  assert.equal(updated.status, 200);
+  assert.equal(updated.body.deliverable.status, "final");
+  assert.equal(updated.body.deliverable.version, 2);
+
+  const listed = await call(deliverablesRoute.GET, "/api/deliverables", { query: { cwd, caseId: caseItem.id } });
+  assert.equal(listed.body.deliverables.length, 1);
+
+  const deleted = await call(deliverablesRoute.DELETE, "/api/deliverables", { method: "DELETE", query: { cwd, id: created.body.deliverable.id } });
+  assert.equal(deleted.status, 200);
+  assert.equal(readStore(cwd)?.deliverables.length, 0);
 });
