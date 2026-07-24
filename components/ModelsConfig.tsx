@@ -1402,6 +1402,71 @@ function AddProviderPicker({
   );
 }
 
+// ── Classify model section ────────────────────────────────────────────────────
+
+function ClassifyModelSection() {
+  const [modelList, setModelList] = useState<{ id: string; name: string; provider: string }[]>([]);
+  const [value, setValue] = useState<string>("");
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      fetch("/api/models").then((r) => r.json()).catch(() => ({})),
+      fetch("/api/mju-config").then((r) => r.json()).catch(() => ({})),
+    ]).then(([models, mjuConfig]) => {
+      if (cancelled) return;
+      setModelList((models as { modelList?: { id: string; name: string; provider: string }[] }).modelList ?? []);
+      setValue((mjuConfig as { classifyModel?: string | null }).classifyModel ?? "");
+      setLoaded(true);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleChange = async (next: string) => {
+    setValue(next);
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/mju-config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ classifyModel: next || null }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({})) as { error?: string };
+        setError(d.error ?? `HTTP ${res.status}`);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ padding: "10px 18px", borderTop: "1px solid var(--border)", flexShrink: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+      <SectionTitle>归属识别模型</SectionTitle>
+      <span style={{ fontSize: 11, color: "var(--text-dim)" }}>进入页判断指令归属案件时使用</span>
+      <select
+        value={value}
+        disabled={!loaded || saving}
+        onChange={(e) => void handleChange(e.target.value)}
+        style={{ ...inputStyle, maxWidth: 360, color: "var(--text)", fontFamily: "var(--font-mono)" }}
+      >
+        <option value="">自动（快模型优先）</option>
+        {modelList.map((m) => {
+          const ref = `${m.provider}/${m.id}`;
+          return <option key={ref} value={ref}>{m.name && m.name !== m.id ? `${m.name}（${ref}）` : ref}</option>;
+        })}
+      </select>
+      {error && <span style={{ fontSize: 11, color: "#f87171" }}>{error}</span>}
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function ModelsConfig({ onClose, onModelsChanged }: { onClose: () => void; onModelsChanged?: () => void }) {
@@ -1744,6 +1809,9 @@ export function ModelsConfig({ onClose, onModelsChanged }: { onClose: () => void
             )}
           </div>
         </div>
+
+        {/* Classify model */}
+        <ClassifyModelSection />
 
         {/* Footer */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, padding: "10px 18px", borderTop: "1px solid var(--border)", flexShrink: 0 }}>

@@ -69,6 +69,7 @@ app/api/
   files/[...path]/route.ts        GET file contents for viewer
   home/route.ts                   GET user home directory
   models/route.ts                 GET { models, modelList, defaultModel }
+  mju-config/route.ts             GET/PUT — global config (~/.mju/config.json), e.g. classifyModel
   models-config/route.ts          GET/PUT — read/write ~/.pi/agent/models.json
   models-config/test/route.ts     POST test a configured model/provider
   plugins/route.ts                GET/POST package plugin management
@@ -99,6 +100,7 @@ lib/
   normalize.ts        normalizeToolCalls() — field name mismatch between file format and our types
   worktree.ts         project/worktree resolution and git worktree operations
   mju-paths.ts        ~/.mju/ layout — Mju metadata lives outside the workspace
+  mju-config.ts       read/write global ~/.mju/config.json (classifyModel)
   mju-vault-items.ts  scans ops/**/{任务,期限,日程}/*.md frontmatter into the Dates view
   mju-orchestration.ts system-prompt guidance for auto subagent delegation
   pi-runtime-paths.ts resolves bundled pi-subagents package paths (cwd-based fallback for Next/Turbopack)

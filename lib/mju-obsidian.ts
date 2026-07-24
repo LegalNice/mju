@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join, basename } from "node:path";
 import type { Case, CaseType, CaseStatus } from "./mju-models";
+import { hasCanonicalStructure } from "./mju-guidance";
 
 export interface ObsidianCaseCandidate {
   title: string;
@@ -48,7 +49,8 @@ function inferStage(vaultPath: string): string {
 }
 
 export function scanObsidianCases(vaultPath: string): ObsidianCaseCandidate[] {
-  if (!isObsidianVault(vaultPath)) return [];
+  // Scan whenever the canonical ops/ layout exists — Obsidian vault or not.
+  if (!isObsidianVault(vaultPath) && !hasCanonicalStructure(vaultPath)) return [];
   const results: ObsidianCaseCandidate[] = [];
 
   for (const base of CASE_BASE_DIRS) {

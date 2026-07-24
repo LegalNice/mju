@@ -184,6 +184,50 @@ async function readJson(res: Response): Promise<Record<string, unknown>> {
   return data;
 }
 
+/** Swiss-style checkbox row: 14px accent box + label + 10px muted hint. */
+function OptionRow({
+  checked,
+  onToggle,
+  label,
+  hint,
+}: {
+  checked: boolean;
+  onToggle: () => void;
+  label: string;
+  hint: string;
+}) {
+  return (
+    <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginTop: 10 }}>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-pressed={checked}
+        aria-label={label}
+        style={{
+          width: 14,
+          height: 14,
+          flex: "none",
+          marginTop: 1,
+          border: checked ? "1px solid var(--accent)" : "1px solid var(--border)",
+          borderRadius: 2,
+          background: checked ? "var(--accent)" : "transparent",
+          color: "#fff",
+          fontSize: 10,
+          lineHeight: "12px",
+          padding: 0,
+          cursor: "pointer",
+        }}
+      >
+        {checked ? "✓" : ""}
+      </button>
+      <div onClick={onToggle} style={{ cursor: "pointer" }}>
+        <div style={{ fontSize: 12, color: "var(--text)" }}>{label}</div>
+        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>{hint}</div>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Inline "initialize a project" form — a directory path input plus a submit
  * button. On success the parent gets a ProjectSummary derived from the store
@@ -191,19 +235,23 @@ async function readJson(res: Response): Promise<Record<string, unknown>> {
  */
 function InitProjectForm({ onInitialized }: { onInitialized: (p: ProjectSummary) => void }) {
   const [cwd, setCwd] = useState("");
+  const [createSkeleton, setCreateSkeleton] = useState(true);
+  const [writeGuidance, setWriteGuidance] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<string | null>(null);
 
   const submit = async () => {
     const value = cwd.trim();
     if (!value || busy) return;
     setBusy(true);
     setError(null);
+    setFeedback(null);
     try {
       const res = await fetch("/api/projects/init", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cwd: value }),
+        body: JSON.stringify({ cwd: value, createSkeleton, writeGuidance }),
       });
       const data = await readJson(res);
       const store = data.store as {
@@ -213,13 +261,22 @@ function InitProjectForm({ onInitialized }: { onInitialized: (p: ProjectSummary)
         isObsidianVault?: boolean;
         updatedAt?: string;
       };
-      onInitialized({
+      const summary: ProjectSummary = {
         cwd: store.cwd ?? value,
         name: store.projectName ?? value.split("/").filter(Boolean).pop() ?? "Mju 项目",
         caseCount: store.cases?.length ?? 0,
         isObsidianVault: Boolean(store.isObsidianVault),
         updatedAt: store.updatedAt ?? new Date().toISOString(),
-      });
+      };
+      const created = Array.isArray(data.createdDirs) && data.createdDirs.length > 0;
+      const guided = data.guidanceWritten === true;
+      if (created || guided) {
+        // Surface what was materialized for a beat before entering the composer.
+        setFeedback(created && guided ? "已创建标准结构与指导文件" : created ? "已创建标准结构" : "已写入指导文件");
+        setTimeout(() => onInitialized(summary), 1200);
+      } else {
+        onInitialized(summary);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setBusy(false);
@@ -284,6 +341,21 @@ function InitProjectForm({ onInitialized }: { onInitialized: (p: ProjectSummary)
           {busy ? "…" : "初始化项目"}
         </button>
       </div>
+      <OptionRow
+        checked={createSkeleton}
+        onToggle={() => setCreateSkeleton((v) => !v)}
+        label="生成标准结构"
+        hint="ops/cases/案卷 等目录，让任务与日程可被识别"
+      />
+      <OptionRow
+        checked={writeGuidance}
+        onToggle={() => setWriteGuidance((v) => !v)}
+        label="写入 Agent 指导文件"
+        hint="AGENTS.md，规定案件结构与任务格式"
+      />
+      {feedback && (
+        <div style={{ marginTop: 10, fontSize: 12, color: "var(--text-muted)" }}>{feedback}</div>
+      )}
       {error && (
         <div style={{ marginTop: 8, fontSize: 12, color: "var(--accent)" }}>{error}</div>
       )}

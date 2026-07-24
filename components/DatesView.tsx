@@ -327,9 +327,11 @@ export function DatesView() {
   }, [cases, tasks, deadlines, schedules, vaultItems, today]);
 
   const itemHref = (item: DateItem): string =>
-    item.kind === "task"
-      ? `/task/${item.taskId}?cwd=${encodeURIComponent(cwd)}`
-      : `/board/${item.caseId}?cwd=${encodeURIComponent(cwd)}`;
+    item.source === "vault"
+      ? `/board/${item.caseId}?cwd=${encodeURIComponent(cwd)}`
+      : item.kind === "task"
+        ? `/task/${item.taskId}?cwd=${encodeURIComponent(cwd)}`
+        : `/board/${item.caseId}?cwd=${encodeURIComponent(cwd)}`;
 
   const itemKey = (item: DateItem): string => `${item.kind}-${item.id}`;
 
@@ -599,8 +601,8 @@ export function DatesView() {
                         </span>
                       </>
                     );
-                    // vault 条目没有 Mju 任务页可去，渲染为不可点击
-                    return isVault ? (
+                    // 无归属案件的 vault 条目无处可去，渲染为不可点击
+                    return isVault && !item.caseId ? (
                       <div key={key} style={{ ...rowStyle, cursor: "default" }}>
                         {row}
                       </div>
@@ -710,8 +712,8 @@ export function DatesView() {
                           </div>
                         </>
                       );
-                      // vault 条目没有 Mju 任务页可去，渲染为不可点击
-                      return isVault ? (
+                      // 无归属案件的 vault 条目无处可去，渲染为不可点击
+                      return isVault && !item.caseId ? (
                         <div key={itemKey(item)} style={{ ...cardStyle, cursor: "default" }}>
                           {card}
                         </div>
@@ -832,8 +834,8 @@ export function DatesView() {
                           </span>
                         </>
                       );
-                      // vault 条目没有 Mju 任务页可去，渲染为不可点击
-                      return isVault ? (
+                      // 无归属案件的 vault 条目无处可去，渲染为不可点击
+                      return isVault && !item.caseId ? (
                         <div key={itemKey(item)} style={{ ...pillStyle, cursor: "default" }}>
                           {pill}
                         </div>

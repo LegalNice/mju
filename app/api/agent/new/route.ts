@@ -3,6 +3,7 @@ import { existsSync } from "fs";
 import { allowFileRoot } from "@/lib/file-access";
 import { invalidateSessionListCache } from "@/lib/session-reader";
 import { startRpcSession } from "@/lib/rpc-manager";
+import { createAgentSessionServices, getAgentDir } from "@earendil-works/pi-coding-agent";
 // POST /api/agent/new  body: { cwd: string; type: string; message?: string; ... }
 // Spawns a brand-new pi session. Most calls immediately send the first command;
 // type:"ensure_session" only creates the runtime so clients can query commands.
@@ -31,9 +32,22 @@ export async function POST(req: Request) {
     allowFileRoot(cwd);
     invalidateSessionListCache();
 
-    // Apply pre-selected model before sending the prompt
-    if (provider && modelId) {
-      await session.send({ type: "set_model", provider, modelId });
+    // Apply the model before sending the prompt. When the caller didn't pick
+    // one, fall back to the settings default so the session state (and the
+    // ChatInput model selector) always has an explicit model.
+    let effectiveProvider = provider;
+    let effectiveModelId = modelId;
+    if (!effectiveProvider || !effectiveModelId) {
+      try {
+        const services = await createAgentSessionServices({ cwd, agentDir: getAgentDir() });
+        effectiveProvider ??= services.settingsManager.getDefaultProvider();
+        effectiveModelId ??= services.settingsManager.getDefaultModel();
+      } catch {
+        // keep undefined — session will use the runtime's own default
+      }
+    }
+    if (effectiveProvider && effectiveModelId) {
+      await session.send({ type: "set_model", provider: effectiveProvider, modelId: effectiveModelId });
     }
 
     // Apply pre-selected thinking level before sending the prompt

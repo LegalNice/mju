@@ -17,6 +17,7 @@ const schedulesRoute = await jiti.import("./schedules/route.ts");
 const workflowsRoute = await jiti.import("./workflows/route.ts");
 const projectsRoute = await jiti.import("./projects/route.ts");
 const deliverablesRoute = await jiti.import("./deliverables/route.ts");
+const mjuConfigRoute = await jiti.import("./mju-config/route.ts");
 
 function url(path, query = {}) {
   const params = new URLSearchParams(query);
@@ -261,4 +262,28 @@ test("runs deliverable CRUD with validation", async (t) => {
   const deleted = await call(deliverablesRoute.DELETE, "/api/deliverables", { method: "DELETE", query: { cwd, id: created.body.deliverable.id } });
   assert.equal(deleted.status, 200);
   assert.equal(readStore(cwd)?.deliverables.length, 0);
+});
+
+test("reads and writes the classify model in the global mju config", async () => {
+  const initial = await call(mjuConfigRoute.GET, "/api/mju-config");
+  assert.equal(initial.status, 200);
+  assert.equal(initial.body.classifyModel, null);
+
+  const invalid = await call(mjuConfigRoute.PUT, "/api/mju-config", {
+    method: "PUT", body: { classifyModel: "no-slash" },
+  });
+  assert.equal(invalid.status, 400);
+
+  const set = await call(mjuConfigRoute.PUT, "/api/mju-config", {
+    method: "PUT", body: { classifyModel: "deepseek/deepseek-chat" },
+  });
+  assert.equal(set.status, 200);
+  assert.equal(set.body.success, true);
+  assert.equal((await call(mjuConfigRoute.GET, "/api/mju-config")).body.classifyModel, "deepseek/deepseek-chat");
+
+  const reset = await call(mjuConfigRoute.PUT, "/api/mju-config", {
+    method: "PUT", body: { classifyModel: null },
+  });
+  assert.equal(reset.status, 200);
+  assert.equal((await call(mjuConfigRoute.GET, "/api/mju-config")).body.classifyModel, null);
 });

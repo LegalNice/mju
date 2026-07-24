@@ -3,6 +3,7 @@ import { completeSimple, type AssistantMessage } from "@earendil-works/pi-ai/com
 import { createAgentSessionServices, getAgentDir } from "@earendil-works/pi-coding-agent";
 import { getProjectStore, isProjectStore } from "@/lib/mju-route-utils";
 import { INBOX_CASE_STAGE } from "@/lib/mju-store";
+import { parseModelRef, readMjuConfig } from "@/lib/mju-config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,15 +38,15 @@ export async function POST(req: Request) {
 
     const services = await createAgentSessionServices({ cwd: project.cwd, agentDir: getAgentDir() });
     // Classification is a tiny task — prefer a fast model over the (possibly
-    // huge reasoning) chat default. Preference order: MJU_CLASSIFY_MODEL env
-    // ("provider/id"), known fast models, then the chat default.
+    // huge reasoning) chat default. Preference order: ~/.mju/config.json
+    // classifyModel ("provider/id", must be available), MJU_CLASSIFY_MODEL env,
+    // known fast models, then the chat default.
     const available = await services.modelRuntime.getAvailable();
     const pickFast = (): { provider: string; id: string } | null => {
-      const envRef = process.env.MJU_CLASSIFY_MODEL;
-      if (envRef) {
-        const [p, ...rest] = envRef.split("/");
-        const id = rest.join("/");
-        if (p && id && available.some((m) => m.provider === p && m.id === id)) return { provider: p, id };
+      for (const ref of [readMjuConfig().classifyModel, process.env.MJU_CLASSIFY_MODEL]) {
+        if (!ref) continue;
+        const parsed = parseModelRef(ref);
+        if (parsed && available.some((m) => m.provider === parsed.provider && m.id === parsed.id)) return parsed;
       }
       for (const ref of ["gpt-5.4-mini", "gpt-5.3-codex-spark"]) {
         const hit = available.find((m) => m.id === ref);
