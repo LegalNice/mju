@@ -7,6 +7,7 @@ import { countToolCallBlocks, getDisplayableAssistantBlocks, splitFinalAssistant
 import { MessageView } from "./MessageView";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
+import { Wordmark } from "./Wordmark";
 import { useAgentSession, type AgentPhase, type NoticeItem } from "@/hooks/useAgentSession";
 import { useAudio } from "@/hooks/useAudio";
 import { useDragDrop } from "@/hooks/useDragDrop";
@@ -442,9 +443,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
                 }}
               >
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, minWidth: 0, lineHeight: 1.4 }}>
-                  <span style={{ fontSize: 24, color: "var(--text)", fontWeight: 700, letterSpacing: "-0.02em", textAlign: "center" }}>
-                    Mju<span style={{ color: "var(--accent)" }}>—</span>Agents
-                  </span>
+                  <Wordmark fontSize={24} />
                   <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", color: "var(--text-dim)", textTransform: "uppercase" }}>
                     Local Agent Workbench
                   </span>

@@ -9,6 +9,7 @@ import { SkillsConfig } from "@/components/SkillsConfig";
 import { SubagentsConfig } from "@/components/SubagentsConfig";
 import { PluginsConfig } from "@/components/PluginsConfig";
 import { ThemeConfig } from "@/components/ThemeConfig";
+import { Wordmark } from "@/components/Wordmark";
 
 const LS_CWD = "mju-entry-cwd";
 const LS_LAST_CASE = "mju-last-case";
@@ -611,8 +612,8 @@ export function EntryPage() {
 
       <div style={{ width: "min(640px, 92vw)", display: "flex", flexDirection: "column" }}>
         <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 34, fontWeight: 700, letterSpacing: "-0.02em" }}>
-            Mju<span style={{ color: "var(--accent)" }}>—</span>Agents
+          <div style={{ display: "flex", justifyContent: "center" }}>
+            <Wordmark fontSize={34} />
           </div>
           <div style={{ ...micro, color: "var(--text-dim)", marginTop: 10 }}>
             Local Agent Workbench
