@@ -43,7 +43,7 @@ export function AppNav({ boardHref }: { boardHref?: string }) {
                 letterSpacing: "0.12em",
                 textTransform: "uppercase",
                 color: on ? "var(--text)" : "var(--text-muted)",
-                textDecoration: on ? "underline" : "none",
+                textDecorationLine: on ? "underline" : "none",
                 textDecorationColor: "var(--accent)",
                 textUnderlineOffset: 5,
                 textDecorationThickness: 2,
