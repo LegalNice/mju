@@ -238,8 +238,26 @@ function InitProjectForm({ onInitialized }: { onInitialized: (p: ProjectSummary)
   const [createSkeleton, setCreateSkeleton] = useState(true);
   const [writeGuidance, setWriteGuidance] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [picking, setPicking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+
+  /** Native folder picker via /api/cwd/pick (macOS osascript on the server). */
+  const pick = async () => {
+    if (picking || busy) return;
+    setPicking(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/cwd/pick", { method: "POST" });
+      const data = await readJson(res);
+      if (typeof data.cwd === "string" && data.cwd) setCwd(data.cwd);
+      // {cancelled: true} → leave the input untouched
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPicking(false);
+    }
+  };
 
   const submit = async () => {
     const value = cwd.trim();
@@ -323,6 +341,25 @@ function InitProjectForm({ onInitialized }: { onInitialized: (p: ProjectSummary)
         </div>
         <button
           type="button"
+          className="mju-entry-browse"
+          onClick={() => void pick()}
+          disabled={picking || busy}
+          style={{
+            ...micro,
+            border: "1px solid var(--border)",
+            borderRadius: 2,
+            background: "transparent",
+            color: "var(--text-muted)",
+            padding: "0 10px",
+            whiteSpace: "nowrap",
+            cursor: picking || busy ? "default" : "pointer",
+            opacity: picking ? 0.5 : 1,
+          }}
+        >
+          {picking ? "…" : "浏览…"}
+        </button>
+        <button
+          type="button"
           className="mju-entry-initbtn"
           onClick={() => void submit()}
           disabled={busy || !cwd.trim()}
@@ -383,6 +420,7 @@ export function EntryPage() {
   const [agenda, setAgenda] = useState<AgendaItem[]>([]);
   const [spotOn, setSpotOn] = useState(false);
   const [initOpen, setInitOpen] = useState(false);
+  const [projMenuOpen, setProjMenuOpen] = useState(false);
   const [activeConfig, setActiveConfig] = useState<ConfigPanel | null>(null);
   const [launching, setLaunching] = useState(false);
   const [leaving, setLeaving] = useState(false);
@@ -405,6 +443,7 @@ export function EntryPage() {
   /** Settled classify result for the latest non-stale request (drives deadline carry-over) */
   const classifyResultRef = useRef<ClassifyResult | null>(null);
   const modelMenuRef = useRef<HTMLDivElement | null>(null);
+  const projMenuRef = useRef<HTMLDivElement | null>(null);
 
   // Load projects once; prefer the persisted cwd when it still exists.
   useEffect(() => {
@@ -515,6 +554,18 @@ export function EntryPage() {
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
   }, [modelMenuOpen]);
+
+  // Close the project panel on outside click.
+  useEffect(() => {
+    if (!projMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (projMenuRef.current && !projMenuRef.current.contains(e.target as Node)) {
+        setProjMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [projMenuOpen]);
 
   // Keep a ref mirror of the loaded cases so async classify callbacks read
   // the current list without re-creating timers on every cases change.
@@ -767,6 +818,8 @@ export function EntryPage() {
         .mju-entry-initbtn:hover:not(:disabled) { background: var(--accent); color: #fff; }
         .mju-entry-plus:hover { color: var(--accent); }
         .mju-entry-model:hover { color: var(--accent); }
+        .mju-entry-proj:hover { color: var(--accent); }
+        .mju-entry-browse:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
       `}</style>
 
       <div style={{ width: "min(640px, 92vw)", display: "flex", flexDirection: "column" }}>
@@ -781,98 +834,163 @@ export function EntryPage() {
 
         {projects !== null && projects.length === 0 && (
           <div style={{ marginTop: 36 }}>
-            <div style={{ ...micro, color: "var(--text-dim)", marginBottom: 6 }}>初始化项目</div>
-            <div style={{ marginBottom: 10, fontSize: 12, color: "var(--text-muted)" }}>
-              输入一个目录路径作为 Mju 项目；Obsidian vault 会自动扫描导入案卷。
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>选择项目文件夹</div>
+            <div style={{ marginBottom: 12, fontSize: 12, color: "var(--text-muted)" }}>
+              选择一个 Obsidian 文件库或任意文件夹作为工作区；Mju 会在其中建立案件结构。
             </div>
             <InitProjectForm onInitialized={onProjectInitialized} />
-          </div>
-        )}
-
-        {projects !== null && projects.length > 1 && (
-          <div style={{ marginTop: 32 }}>
-            <div style={{ ...micro, color: "var(--text-dim)", marginBottom: 6 }}>项目</div>
-            <div style={{ border: "1px solid var(--border)", borderRadius: 2 }}>
-              {projects.map((p, i) => {
-                const active = project?.cwd === p.cwd;
-                return (
-                  <button
-                    key={p.cwd}
-                    type="button"
-                    onClick={() => setProject(p)}
-                    className="mju-entry-item"
-                    style={{
-                      display: "flex",
-                      width: "100%",
-                      alignItems: "center",
-                      gap: 10,
-                      padding: "9px 12px",
-                      border: "none",
-                      borderBottom: i < projects.length - 1 ? "1px solid var(--border)" : "none",
-                      background: "transparent",
-                      color: active ? "var(--text)" : "var(--text-muted)",
-                      font: "inherit",
-                      fontSize: 13,
-                      fontWeight: active ? 700 : 400,
-                      cursor: "pointer",
-                      textAlign: "left",
-                    }}
-                  >
-                    <span
-                      style={{
-                        width: 6,
-                        height: 6,
-                        flex: "none",
-                        background: active ? "var(--accent)" : "transparent",
-                      }}
-                    />
-                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {p.name}
-                    </span>
-                    <span style={{ fontSize: 11, color: "var(--text-dim)" }}>{p.caseCount} 案件</span>
-                  </button>
-                );
-              })}
-              <button
-                type="button"
-                className="mju-entry-plus"
-                onClick={() => setInitOpen((v) => !v)}
-                style={{
-                  display: "block",
-                  width: "100%",
-                  padding: "9px 12px",
-                  border: "none",
-                  borderTop: "1px solid var(--border)",
-                  background: "transparent",
-                  color: "var(--text-muted)",
-                  font: "inherit",
-                  ...micro,
-                  textAlign: "left",
-                  cursor: "pointer",
-                }}
-              >
-                + 初始化新项目
-              </button>
-            </div>
-            {initOpen && (
-              <div style={{ marginTop: 12 }}>
-                <InitProjectForm
-                  onInitialized={(p) => {
-                    setInitOpen(false);
-                    onProjectInitialized(p);
-                  }}
-                />
-              </div>
-            )}
           </div>
         )}
 
         {project && (
           <>
             <div
+              ref={projMenuRef}
+              style={{
+                position: "relative",
+                marginTop: 32,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <span style={{ ...micro, color: "var(--text-dim)" }}>项目</span>
+              <button
+                type="button"
+                className="mju-entry-proj"
+                onClick={() => setProjMenuOpen((v) => !v)}
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  padding: 0,
+                  font: "inherit",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: "var(--text-muted)",
+                  cursor: "pointer",
+                }}
+              >
+                {project.name} ▾
+              </button>
+              {projMenuOpen && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "100%",
+                    right: 0,
+                    marginTop: 8,
+                    width: 320,
+                    background: "var(--bg)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 2,
+                    zIndex: 30,
+                  }}
+                >
+                  <div style={{ maxHeight: 320, overflowY: "auto" }}>
+                    {(projects ?? []).map((p, i, arr) => {
+                      const active = project.cwd === p.cwd;
+                      return (
+                        <button
+                          key={p.cwd}
+                          type="button"
+                          className="mju-entry-item"
+                          onClick={() => {
+                            setProject(p);
+                            setProjMenuOpen(false);
+                          }}
+                          style={{
+                            display: "flex",
+                            width: "100%",
+                            alignItems: "center",
+                            gap: 10,
+                            padding: "9px 12px",
+                            border: "none",
+                            borderBottom: i < arr.length - 1 ? "1px solid var(--border)" : "none",
+                            background: "transparent",
+                            font: "inherit",
+                            cursor: "pointer",
+                            textAlign: "left",
+                          }}
+                        >
+                          <span
+                            style={{
+                              width: 6,
+                              height: 6,
+                              flex: "none",
+                              background: active ? "var(--accent)" : "transparent",
+                            }}
+                          />
+                          <span style={{ flex: 1, minWidth: 0 }}>
+                            <span
+                              style={{
+                                display: "block",
+                                fontSize: 12,
+                                fontWeight: active ? 700 : 400,
+                                color: active ? "var(--text)" : "var(--text-muted)",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {p.name}
+                            </span>
+                            <span
+                              style={{
+                                display: "block",
+                                marginTop: 2,
+                                fontSize: 10,
+                                color: "var(--text-dim)",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {p.cwd}
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <button
+                    type="button"
+                    className="mju-entry-plus"
+                    onClick={() => setInitOpen((v) => !v)}
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      padding: "9px 12px",
+                      border: "none",
+                      borderTop: "1px solid var(--border)",
+                      background: "transparent",
+                      color: "var(--text-muted)",
+                      font: "inherit",
+                      ...micro,
+                      textAlign: "left",
+                      cursor: "pointer",
+                    }}
+                  >
+                    + 添加项目文件夹
+                  </button>
+                  {initOpen && (
+                    <div style={{ padding: "0 12px 12px" }}>
+                      <InitProjectForm
+                        onInitialized={(p) => {
+                          setInitOpen(false);
+                          setProjMenuOpen(false);
+                          onProjectInitialized(p);
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div
               className="mju-entry-composer"
               style={{
-                marginTop: 36,
+                marginTop: 12,
                 border: "1px solid var(--border)",
                 borderRadius: 2,
                 padding: 16,
