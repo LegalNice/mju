@@ -192,6 +192,15 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
   const [hoveredDocPath, setHoveredDocPath] = useState<string | null>(null);
   const templatePickerRef = useRef<HTMLDivElement | null>(null);
 
+  // 左栏宽度（可拖拽，localStorage 持久化）
+  const [leftWidth, setLeftWidth] = useState(400);
+  const [resizing, setResizing] = useState(false);
+  const [handleHover, setHandleHover] = useState(false);
+  const resizingRef = useRef(false);
+
+  // 改派菜单搜索
+  const [reassignQuery, setReassignQuery] = useState("");
+
   const selectedPathRef = useRef<string | null>(null);
   selectedPathRef.current = selectedPath;
 
@@ -677,6 +686,49 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
     [exportingPath, templates, handleGenerate],
   );
 
+  // ---------- 左栏宽度拖拽 ----------
+
+  // 挂载后读 localStorage（SSR 初始 400，避免水合不一致）
+  useEffect(() => {
+    try {
+      const saved = Number(localStorage.getItem("mju-task-left-width"));
+      if (Number.isFinite(saved) && saved >= 320) {
+        setLeftWidth(Math.min(Math.max(320, window.innerWidth * 0.6), saved));
+      }
+    } catch {
+      // localStorage 不可用时静默
+    }
+  }, []);
+
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    resizingRef.current = true;
+    setResizing(true);
+    document.body.style.userSelect = "none";
+    const onMove = (ev: MouseEvent) => {
+      if (!resizingRef.current) return;
+      const max = Math.max(320, window.innerWidth * 0.6);
+      setLeftWidth(Math.min(max, Math.max(320, ev.clientX)));
+    };
+    const onUp = () => {
+      resizingRef.current = false;
+      setResizing(false);
+      document.body.style.userSelect = "";
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      setLeftWidth((w) => {
+        try {
+          localStorage.setItem("mju-task-left-width", String(w));
+        } catch {
+          // localStorage 不可用时静默
+        }
+        return w;
+      });
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }, []);
+
   // ---------- 渲染 ----------
 
   const boardHref = task ? `/board/${task.caseId}?cwd=${encodeURIComponent(cwd)}` : undefined;  const today = todayString();
@@ -718,6 +770,14 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
       </div>,
     );
   }
+
+  const reassignQueryNorm = reassignQuery.trim().toLowerCase();
+  // 收件箱（通用任务）恒显示在列表底部且不受过滤
+  const reassignInbox = cases.filter((c) => c.id !== task.caseId && c.stage === "收件箱");
+  const reassignOthers = cases
+    .filter((c) => c.id !== task.caseId && c.stage !== "收件箱")
+    .filter((c) => !reassignQueryNorm || c.title.toLowerCase().includes(reassignQueryNorm));
+  const reassignItems = [...reassignOthers, ...reassignInbox];
 
   const header = (
     <div style={{ flexShrink: 0, borderBottom: "1px solid var(--border)", padding: "12px 16px" }}>
@@ -864,6 +924,7 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
             type="button"
             onClick={() => {
               setMetaMenuError(null);
+              setReassignQuery("");
               setMetaMenu((m) => (m === "reassign" ? null : "reassign"));
             }}
             style={{
@@ -884,13 +945,33 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
             改派 ▾
           </button>
           {metaMenu === "reassign" && (
-            <div style={MENU_STYLE}>
-              {cases.filter((c) => c.id !== task.caseId).length === 0 && (
-                <div style={{ fontSize: 11, color: "var(--text-dim)", padding: "7px 12px" }}>没有其它案件</div>
-              )}
-              {cases
-                .filter((c) => c.id !== task.caseId)
-                .map((c) => (
+            <div style={{ ...MENU_STYLE, width: 220, padding: 0 }}>
+              <div style={{ padding: "6px 8px", borderBottom: "1px solid var(--border)" }}>
+                <input
+                  autoFocus
+                  value={reassignQuery}
+                  onChange={(e) => setReassignQuery(e.target.value)}
+                  placeholder="搜索案件…"
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    border: "1px solid var(--border)",
+                    borderRadius: 2,
+                    padding: "6px 8px",
+                    fontSize: 12,
+                    background: "transparent",
+                    color: "var(--text)",
+                    outline: "none",
+                  }}
+                />
+              </div>
+              <div style={{ maxHeight: 320, overflowY: "auto", padding: "4px 0" }}>
+                {reassignItems.length === 0 && (
+                  <div style={{ fontSize: 11, color: "var(--text-dim)", padding: "7px 12px" }}>
+                    {reassignQueryNorm ? "无匹配案件" : "没有其它案件"}
+                  </div>
+                )}
+                {reassignItems.map((c) => (
                   <button
                     key={c.id}
                     type="button"
@@ -906,6 +987,7 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
                     {c.title}
                   </button>
                 ))}
+              </div>
               {metaMenuError && (
                 <div style={{ fontSize: 11, color: "var(--accent)", padding: "6px 12px" }}>{metaMenuError}</div>
               )}
@@ -962,7 +1044,7 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
       {/* ============ 左栏：任务信息 + 聊天 ============ */}
       <div
         style={{
-          width: 400,
+          width: leftWidth,
           flexShrink: 0,
           borderRight: "1px solid var(--border)",
           display: "flex",
@@ -1048,6 +1130,25 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
             {startError && <ErrorLine text={startError} />}
           </div>
         )}
+      </div>
+
+      {/* ============ 拖拽把手 ============ */}
+      <div
+        onMouseDown={handleResizeStart}
+        onMouseEnter={() => setHandleHover(true)}
+        onMouseLeave={() => setHandleHover(false)}
+        style={{ width: 5, flexShrink: 0, cursor: "col-resize", position: "relative" }}
+      >
+        <div
+          style={{
+            position: "absolute",
+            left: 2,
+            top: 0,
+            bottom: 0,
+            width: 1,
+            background: resizing || handleHover ? "var(--accent)" : "transparent",
+          }}
+        />
       </div>
 
       {/* ============ 右栏：文档列表 + 预览 ============ */}

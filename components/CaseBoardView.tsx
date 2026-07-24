@@ -311,6 +311,7 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
   const [taskMenuShown, setTaskMenuShown] = useState(false);
   const [taskMenuError, setTaskMenuError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [caseQuery, setCaseQuery] = useState("");
   const [runningSessionIds, setRunningSessionIds] = useState<Set<string>>(new Set());
   const menuRef = useRef<HTMLDivElement | null>(null);
   const wfMenuRef = useRef<HTMLDivElement | null>(null);
@@ -381,6 +382,16 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
     }
     return counts;
   }, [tasks]);
+
+  // 「改派到」候选：排除当前案件；收件箱恒置底不受搜索过滤
+  const reassignCases = useMemo(() => {
+    const others = (cases ?? []).filter((c) => c.id !== caseId);
+    const q = caseQuery.trim().toLowerCase();
+    const inbox = others.filter((c) => c.stage === "收件箱");
+    const rest = others.filter((c) => c.stage !== "收件箱");
+    const filtered = q ? rest.filter((c) => c.title.toLowerCase().includes(q)) : rest;
+    return { filtered, inbox, total: others.length, query: q };
+  }, [cases, caseId, caseQuery]);
 
   // 有进行中任务时每 5s 轮询一次任务列表
   const hasInProgress = caseTasks.some((t) => t.status === "进行中");
@@ -456,10 +467,11 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
     return () => document.removeEventListener("mousedown", onDown);
   }, [openTaskMenuId]);
 
-  // 菜单挂载后下一帧淡入（opacity transition）
+  // 菜单挂载后下一帧淡入（opacity transition）；关闭时清空改派搜索词
   useEffect(() => {
     if (!openTaskMenuId) {
       setTaskMenuShown(false);
+      setCaseQuery("");
       return;
     }
     const raf = requestAnimationFrame(() => setTaskMenuShown(true));
@@ -893,7 +905,7 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
                           position: "absolute",
                           top: 28,
                           right: 0,
-                          width: 200,
+                          width: 240,
                           background: "var(--bg)",
                           border: "1px solid var(--border)",
                           borderRadius: 2,
@@ -918,13 +930,43 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
                         ))}
                         <div style={{ height: 1, background: "var(--border)", margin: "4px 0" }} />
                         <div style={{ ...MICRO, color: "var(--text-dim)", padding: "4px 12px" }}>改派到</div>
-                        {(cases ?? [])
-                          .filter((c) => c.id !== caseId)
-                          .map((c) => (
+                        <div style={{ padding: "2px 12px 6px" }}>
+                          <input
+                            autoFocus={reassignCases.total > 8}
+                            value={caseQuery}
+                            placeholder="搜索案件…"
+                            onChange={(e) => setCaseQuery(e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                              width: "100%",
+                              boxSizing: "border-box",
+                              border: "1px solid var(--border)",
+                              borderRadius: 2,
+                              padding: "5px 8px",
+                              fontSize: 12,
+                              background: "var(--bg)",
+                              color: "var(--text)",
+                              outline: "none",
+                            }}
+                          />
+                        </div>
+                        <div style={{ maxHeight: 240, overflowY: "auto" }}>
+                          {reassignCases.query && reassignCases.filtered.length === 0 && (
+                            <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "8px 12px" }}>
+                              无匹配案件
+                            </div>
+                          )}
+                          {reassignCases.filtered.map((c) => (
                             <MenuRow key={c.id} onClick={() => patchTask(task.id, { caseId: c.id })}>
                               {c.title}
                             </MenuRow>
                           ))}
+                          {reassignCases.inbox.map((c) => (
+                            <MenuRow key={c.id} onClick={() => patchTask(task.id, { caseId: c.id })}>
+                              {c.title}
+                            </MenuRow>
+                          ))}
+                        </div>
                         <div style={{ height: 1, background: "var(--border)", margin: "4px 0" }} />
                         <MenuRow micro disabled={!isRunning} onClick={() => abortTask(task)}>
                           中断执行
