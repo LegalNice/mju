@@ -11,19 +11,32 @@ export const dynamic = "force-dynamic";
 
 const PANDOC_TIMEOUT_MS = 60_000;
 
-/** Templates live in <vault>/templates/legal/*.docx (Obsidian convention). */
+/** Templates live under <vault>/templates/legal/** (subdirectories included). */
 function templatesDir(cwd: string): string {
   return join(cwd, "templates", "legal");
 }
 
 function listTemplates(cwd: string): string[] {
-  try {
-    return readdirSync(templatesDir(cwd))
-      .filter((name) => name.toLowerCase().endsWith(".docx"))
-      .map((name) => basename(name, extname(name)));
-  } catch {
-    return [];
-  }
+  const out: string[] = [];
+  const walk = (dir: string, depth: number): void => {
+    if (depth > 4 || out.length >= 100) return;
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory() && !entry.name.startsWith(".")) walk(full, depth + 1);
+      else if (entry.isFile() && entry.name.toLowerCase().endsWith(".docx")) {
+        // Name shown in the picker: relative path without extension, e.g. "evidence-and-litigation/民事起诉状（要素式）"
+        out.push(full.slice(templatesDir(cwd).length + 1, -extname(entry.name).length));
+      }
+    }
+  };
+  walk(templatesDir(cwd), 0);
+  return out;
 }
 
 function uniqueDocxPath(sourcePath: string): string {
@@ -78,9 +91,16 @@ export async function POST(req: Request) {
     args[2] = outputPath;
     if (body.templateName) {
       const name = body.templateName.trim();
-      if (!/^[\w一-龥-]+$/.test(name)) return NextResponse.json({ error: "invalid templateName" }, { status: 400 });
-      const templatePath = join(templatesDir(project.cwd), `${name}.docx`);
-      if (!existsSync(templatePath)) return NextResponse.json({ error: "template not found" }, { status: 404 });
+      // Template names are relative paths under templates/legal (may include
+      // subdirectories) — reject traversal instead of whitelisting characters.
+      if (!name || name.includes("..") || name.startsWith("/") || name.includes("\\")) {
+        return NextResponse.json({ error: "invalid templateName" }, { status: 400 });
+      }
+      const templatePath = resolve(templatesDir(project.cwd), `${name}.docx`);
+      const templatesRoot = resolve(templatesDir(project.cwd));
+      if (!templatePath.startsWith(templatesRoot + sep) || !existsSync(templatePath)) {
+        return NextResponse.json({ error: "template not found" }, { status: 404 });
+      }
       args.push("--reference-doc", templatePath);
     }
 

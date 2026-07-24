@@ -78,6 +78,7 @@ app/api/
   skills/install/route.ts         POST install skills through npx skills add
   skills/search/route.ts          GET/POST skills.sh search
   tasks/route.ts                  GET/POST/PATCH/DELETE tasks (sessionId/originPrompt supported)
+  vault-items/route.ts            GET ?cwd= — vault-native 任务/期限/日程 (frontmatter scan, 15s cache)
   deadlines/route.ts              GET/POST/PATCH/DELETE deadlines
   schedules/route.ts              GET/POST/PATCH/DELETE schedules
   workflows/route.ts              GET/POST workflow preview/start
@@ -98,6 +99,7 @@ lib/
   normalize.ts        normalizeToolCalls() — field name mismatch between file format and our types
   worktree.ts         project/worktree resolution and git worktree operations
   mju-paths.ts        ~/.mju/ layout — Mju metadata lives outside the workspace
+  mju-vault-items.ts  scans ops/**/{任务,期限,日程}/*.md frontmatter into the Dates view
   mju-orchestration.ts system-prompt guidance for auto subagent delegation
   pi-runtime-paths.ts resolves bundled pi-subagents package paths (cwd-based fallback for Next/Turbopack)
   subagent-config-tool.ts configure_subagent custom tool — writes project agents to ~/.mju

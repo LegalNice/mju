@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import type { Case, Deadline, Schedule, Task } from "@/lib/mju-models";
+import type { VaultItem } from "@/lib/mju-vault-items";
 import { AppNav } from "./AppNav";
 
 const MICRO: CSSProperties = {
@@ -11,6 +12,14 @@ const MICRO: CSSProperties = {
   fontWeight: 700,
   letterSpacing: "0.12em",
   textTransform: "uppercase",
+};
+
+/** vault 条目标题前的「文」micro 标记 */
+const VAULT_MARK: CSSProperties = {
+  ...MICRO,
+  letterSpacing: "0.06em",
+  color: "var(--text-dim)",
+  marginRight: 6,
 };
 
 const CASE_TYPE_LABEL: Record<Case["type"], string> = {
@@ -26,11 +35,12 @@ interface DateItem {
   time?: string; // HH:mm
   title: string;
   kind: "task" | "deadline" | "schedule";
-  caseId: string;
+  caseId: string; // vault 条目可能缺失（""），此时 caseTitle 取自文件路径
   caseTitle: string;
   caseType: Case["type"];
   overdue: boolean;
   taskId?: string;
+  source: "store" | "vault";
 }
 
 const KIND_TICK: Record<DateItem["kind"], string> = {
@@ -90,6 +100,14 @@ function formatMD(date: string): string {
   return `${d.getMonth() + 1} 月 ${d.getDate()} 日`;
 }
 
+/** vault 条目缺 caseId 时，从文件路径 ops/cases/<分组>/<案名>/... 提取案名 */
+function caseNameFromPath(filePath: string): string {
+  const segs = filePath.split("/");
+  const i = segs.lastIndexOf("cases");
+  const name = i >= 0 ? segs[i + 2] : undefined;
+  return name ?? "文件库";
+}
+
 function CenteredNote({ text }: { text: string }) {
   return (
     <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -110,6 +128,7 @@ export function DatesView() {
   const [tasks, setTasks] = useState<Task[] | null>(null);
   const [deadlines, setDeadlines] = useState<Deadline[] | null>(null);
   const [schedules, setSchedules] = useState<Schedule[] | null>(null);
+  const [vaultItems, setVaultItems] = useState<VaultItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [view, setView] = useState<ViewMode>("list");
@@ -207,12 +226,20 @@ export function DatesView() {
         if (!res.ok) throw new Error(`schedules ${res.status}`);
         return ((await res.json()) as { schedules: Schedule[] }).schedules;
       }),
+      // vault 扫描失败不阻塞整体加载
+      fetch(`/api/vault-items?${q}`)
+        .then(async (res) => {
+          if (!res.ok) throw new Error(`vault-items ${res.status}`);
+          return ((await res.json()) as { items: VaultItem[] }).items;
+        })
+        .catch(() => [] as VaultItem[]),
     ])
-      .then(([c, t, d, s]) => {
+      .then(([c, t, d, s, v]) => {
         setCases(c);
         setTasks(t);
         setDeadlines(d);
         setSchedules(s);
+        setVaultItems(v);
       })
       .catch(() => setError("load failed"));
   }, [cwd]);
@@ -220,7 +247,7 @@ export function DatesView() {
   const today = todayString();
 
   const items = useMemo(() => {
-    if (!cases || !tasks || !deadlines || !schedules) return [];
+    if (!cases || !tasks || !deadlines || !schedules || !vaultItems) return [];
     const caseMap = new Map(cases.map((c) => [c.id, c]));
     const caseInfo = (caseId: string) => {
       const c = caseMap.get(caseId);
@@ -242,6 +269,7 @@ export function DatesView() {
         caseType: info.type,
         overdue: date < today,
         taskId: t.id,
+        source: "store",
       });
     }
     for (const d of deadlines) {
@@ -257,6 +285,7 @@ export function DatesView() {
         caseTitle: info.title,
         caseType: info.type,
         overdue: date < today,
+        source: "store",
       });
     }
     for (const s of schedules) {
@@ -274,10 +303,28 @@ export function DatesView() {
         caseTitle: info.title,
         caseType: info.type,
         overdue: date < today,
+        source: "store",
+      });
+    }
+    for (const v of vaultItems) {
+      const date = v.date.slice(0, 10);
+      const c = v.caseId ? caseMap.get(v.caseId) : undefined;
+      out.push({
+        id: `vault:${v.filePath}`,
+        date,
+        // vault 的 time 可能是 "H:mm"，补齐前导零保证字符串排序正确
+        time: v.time ? v.time.padStart(5, "0") : undefined,
+        title: v.title,
+        kind: v.kind,
+        caseId: v.caseId ?? "",
+        caseTitle: c?.title ?? caseNameFromPath(v.filePath),
+        caseType: c?.type ?? "litigation",
+        overdue: date < today,
+        source: "vault",
       });
     }
     return out;
-  }, [cases, tasks, deadlines, schedules, today]);
+  }, [cases, tasks, deadlines, schedules, vaultItems, today]);
 
   const itemHref = (item: DateItem): string =>
     item.kind === "task"
@@ -400,7 +447,7 @@ export function DatesView() {
       </div>,
     );
   }
-  if (resolved === "pending" || !cases || !tasks || !deadlines || !schedules) {
+  if (resolved === "pending" || !cases || !tasks || !deadlines || !schedules || !vaultItems) {
     return shell(<CenteredNote text="加载中…" />);
   }
 
@@ -469,6 +516,9 @@ export function DatesView() {
               <span style={{ color: KIND_TICK[kind] }}>■</span> {KIND_LABEL[kind]}
             </span>
           ))}
+          <span>
+            <span style={{ color: "var(--text-dim)" }}>□</span> 文件库
+          </span>
         </div>
 
         {/* ============ 列表（时间线） ============ */}
@@ -500,23 +550,19 @@ export function DatesView() {
                   {groupItems.map((item) => {
                     const key = itemKey(item);
                     const overdueDays = item.overdue ? diffDays(today, item.date) : 0;
-                    return (
-                      <Link
-                        key={key}
-                        href={itemHref(item)}
-                        onMouseEnter={() => setHoveredKey(key)}
-                        onMouseLeave={() => setHoveredKey(null)}
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "72px 1fr auto",
-                          gap: 14,
-                          padding: "11px 0",
-                          borderBottom: "1px solid var(--border)",
-                          alignItems: "baseline",
-                          textDecoration: "none",
-                          color: "var(--text)",
-                        }}
-                      >
+                    const isVault = item.source === "vault";
+                    const rowStyle: CSSProperties = {
+                      display: "grid",
+                      gridTemplateColumns: "72px 1fr auto",
+                      gap: 14,
+                      padding: "11px 0",
+                      borderBottom: "1px solid var(--border)",
+                      alignItems: "baseline",
+                      textDecoration: "none",
+                      color: "var(--text)",
+                    };
+                    const row = (
+                      <>
                         <span
                           style={{
                             fontSize: 11,
@@ -531,10 +577,11 @@ export function DatesView() {
                           style={{
                             fontWeight: 600,
                             fontSize: 13,
-                            color: hoveredKey === key ? "var(--accent)" : "var(--text)",
+                            color: !isVault && hoveredKey === key ? "var(--accent)" : "var(--text)",
                             transition: "color .12s",
                           }}
                         >
+                          {isVault && <span style={VAULT_MARK}>文</span>}
                           {item.title}
                         </span>
                         <span
@@ -550,6 +597,22 @@ export function DatesView() {
                         >
                           {item.caseTitle}
                         </span>
+                      </>
+                    );
+                    // vault 条目没有 Mju 任务页可去，渲染为不可点击
+                    return isVault ? (
+                      <div key={key} style={{ ...rowStyle, cursor: "default" }}>
+                        {row}
+                      </div>
+                    ) : (
+                      <Link
+                        key={key}
+                        href={itemHref(item)}
+                        onMouseEnter={() => setHoveredKey(key)}
+                        onMouseLeave={() => setHoveredKey(null)}
+                        style={rowStyle}
+                      >
+                        {row}
                       </Link>
                     );
                   })}
@@ -614,37 +677,50 @@ export function DatesView() {
                     >
                       {d.getMonth() + 1}/{d.getDate()} 周{WEEKDAYS[(d.getDay() + 6) % 7]}
                     </h3>
-                    {dayItems.map((item) => (
-                      <Link
-                        key={itemKey(item)}
-                        href={itemHref(item)}
-                        style={{
-                          display: "block",
-                          border: "1px solid var(--border)",
-                          // inset shadow, not borderLeft — never conflicts with
-                          // the border shorthand (same React warning as CaseBoardView)
-                          boxShadow: `inset 3px 0 0 ${KIND_TICK[item.kind]}`,
-                          borderRadius: 2,
-                          padding: "6px 8px",
-                          marginTop: 6,
-                          background: "var(--bg)",
-                          color: "var(--text)",
-                          textDecoration: "none",
-                        }}
-                      >
-                        <div style={{ fontSize: 12, fontWeight: 600, lineHeight: 1.4 }}>
-                          {item.time && (
-                            <span style={{ color: "var(--text-dim)", fontWeight: 400, marginRight: 6 }}>
-                              {item.time}
-                            </span>
-                          )}
-                          {item.title}
+                    {dayItems.map((item) => {
+                      const isVault = item.source === "vault";
+                      const cardStyle: CSSProperties = {
+                        display: "block",
+                        border: "1px solid var(--border)",
+                        // inset shadow, not borderLeft — never conflicts with
+                        // the border shorthand (same React warning as CaseBoardView)
+                        boxShadow: `inset 3px 0 0 ${KIND_TICK[item.kind]}`,
+                        borderRadius: 2,
+                        padding: "6px 8px",
+                        marginTop: 6,
+                        background: "var(--bg)",
+                        color: "var(--text)",
+                        textDecoration: "none",
+                      };
+                      const card = (
+                        <>
+                          <div style={{ fontSize: 12, fontWeight: 600, lineHeight: 1.4 }}>
+                            {item.time && (
+                              <span style={{ color: "var(--text-dim)", fontWeight: 400, marginRight: 6 }}>
+                                {item.time}
+                              </span>
+                            )}
+                            {isVault && <span style={VAULT_MARK}>文</span>}
+                            {item.title}
+                          </div>
+                          <div style={{ ...MICRO, letterSpacing: "0.06em", color: "var(--text-dim)", marginTop: 4 }}>
+                            {isVault && !item.caseId
+                              ? item.caseTitle
+                              : `${CASE_TYPE_LABEL[item.caseType]} · ${item.caseTitle}`}
+                          </div>
+                        </>
+                      );
+                      // vault 条目没有 Mju 任务页可去，渲染为不可点击
+                      return isVault ? (
+                        <div key={itemKey(item)} style={{ ...cardStyle, cursor: "default" }}>
+                          {card}
                         </div>
-                        <div style={{ ...MICRO, letterSpacing: "0.06em", color: "var(--text-dim)", marginTop: 4 }}>
-                          {CASE_TYPE_LABEL[item.caseType]} · {item.caseTitle}
-                        </div>
-                      </Link>
-                    ))}
+                      ) : (
+                        <Link key={itemKey(item)} href={itemHref(item)} style={cardStyle}>
+                          {card}
+                        </Link>
+                      );
+                    })}
                   </section>
                 );
               })}
@@ -728,35 +804,50 @@ export function DatesView() {
                     >
                       {d.getDate()}
                     </div>
-                    {shown.map((item) => (
-                      <Link
-                        key={itemKey(item)}
-                        href={itemHref(item)}
-                        onClick={(e) => e.stopPropagation()}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 5,
-                          marginTop: 3,
-                          fontSize: 11,
-                          lineHeight: 1.3,
-                          textDecoration: "none",
-                          color: item.kind === "deadline" ? "var(--accent)" : "var(--text)",
-                        }}
-                      >
-                        <span
-                          style={{
-                            flexShrink: 0,
-                            width: 4,
-                            height: 4,
-                            background: KIND_TICK[item.kind],
-                          }}
-                        />
-                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {item.title}
-                        </span>
-                      </Link>
-                    ))}
+                    {shown.map((item) => {
+                      const isVault = item.source === "vault";
+                      const pillStyle: CSSProperties = {
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 5,
+                        marginTop: 3,
+                        fontSize: 11,
+                        lineHeight: 1.3,
+                        textDecoration: "none",
+                        color: item.kind === "deadline" ? "var(--accent)" : "var(--text)",
+                      };
+                      const pill = (
+                        <>
+                          <span
+                            style={{
+                              flexShrink: 0,
+                              width: 4,
+                              height: 4,
+                              background: KIND_TICK[item.kind],
+                            }}
+                          />
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {isVault && <span style={{ color: "var(--text-dim)" }}>文 </span>}
+                            {item.title}
+                          </span>
+                        </>
+                      );
+                      // vault 条目没有 Mju 任务页可去，渲染为不可点击
+                      return isVault ? (
+                        <div key={itemKey(item)} style={{ ...pillStyle, cursor: "default" }}>
+                          {pill}
+                        </div>
+                      ) : (
+                        <Link
+                          key={itemKey(item)}
+                          href={itemHref(item)}
+                          onClick={(e) => e.stopPropagation()}
+                          style={pillStyle}
+                        >
+                          {pill}
+                        </Link>
+                      );
+                    })}
                     {overflow > 0 && (
                       <div style={{ ...MICRO, letterSpacing: "0.06em", color: "var(--text-dim)", marginTop: 3 }}>
                         +{overflow}

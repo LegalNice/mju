@@ -13,6 +13,7 @@ import { Wordmark } from "@/components/Wordmark";
 
 const LS_CWD = "mju-entry-cwd";
 const LS_LAST_CASE = "mju-last-case";
+const LS_MODEL = "mju-entry-model";
 const INBOX_TITLE = "通用任务";
 
 type ConfigPanel = "models" | "skills" | "agents" | "plugins" | "theme";
@@ -23,6 +24,25 @@ interface ProjectSummary {
   caseCount: number;
   isObsidianVault: boolean;
   updatedAt: string;
+}
+
+/** One entry of GET /api/models' modelList. */
+interface ModelEntry {
+  id: string;
+  name: string;
+  provider: string;
+}
+
+interface ModelSelection {
+  provider: string;
+  modelId: string;
+}
+
+/** Settled result of the latest non-stale /api/classify call. */
+interface ClassifyResult {
+  text: string;
+  case: MjuCase | null;
+  deadline: string | null;
 }
 
 /** One row in the "近期在办" list, merged from tasks, deadlines and schedules. */
@@ -280,10 +300,14 @@ export function EntryPage() {
   const [text, setText] = useState("");
   const [detected, setDetected] = useState<MjuCase | null>(null);
   const [aiDetected, setAiDetected] = useState<MjuCase | null>(null);
+  const [aiDeadline, setAiDeadline] = useState<string | null>(null);
   const [classifying, setClassifying] = useState(false);
   const [pinned, setPinned] = useState<Pinned>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [modelLabel, setModelLabel] = useState<string | null>(null);
+  const [caseQuery, setCaseQuery] = useState("");
+  const [modelList, setModelList] = useState<ModelEntry[]>([]);
+  const [selectedModel, setSelectedModel] = useState<ModelSelection | null>(null);
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [agenda, setAgenda] = useState<AgendaItem[]>([]);
   const [spotOn, setSpotOn] = useState(false);
   const [initOpen, setInitOpen] = useState(false);
@@ -305,7 +329,10 @@ export function EntryPage() {
   /** Last instruction text sent to /api/classify — avoids re-asking for identical text */
   const lastClassifyText = useRef("");
   /** In-flight classify request, so launch() can await it instead of racing to the inbox */
-  const inflightClassify = useRef<{ text: string; promise: Promise<MjuCase | null> } | null>(null);
+  const inflightClassify = useRef<{ text: string; promise: Promise<ClassifyResult> } | null>(null);
+  /** Settled classify result for the latest non-stale request (drives deadline carry-over) */
+  const classifyResultRef = useRef<ClassifyResult | null>(null);
+  const modelMenuRef = useRef<HTMLDivElement | null>(null);
 
   // Load projects once; prefer the persisted cwd when it still exists.
   useEffect(() => {
@@ -339,9 +366,11 @@ export function EntryPage() {
     setPinned(null);
     pinnedRef.current = null;
     setAiDetected(null);
+    setAiDeadline(null);
     setClassifying(false);
     classifySeq.current++;
     lastClassifyText.current = "";
+    classifyResultRef.current = null;
     if (classifyTimer.current) clearTimeout(classifyTimer.current);
     setMenuOpen(false);
 
@@ -370,9 +399,22 @@ export function EntryPage() {
       });
     fetch(`/api/models?cwd=${encodeURIComponent(project.cwd)}`)
       .then((res) => (res.ok ? res.json() : null))
-      .then((data: { defaultModel?: { provider: string; modelId: string } | null } | null) => {
-        if (cancelled || !data?.defaultModel) return;
-        setModelLabel(`${data.defaultModel.provider} · ${data.defaultModel.modelId}`);
+      .then((data: {
+        defaultModel?: ModelSelection | null;
+        modelList?: ModelEntry[];
+      } | null) => {
+        if (cancelled || !data) return;
+        const list = data.modelList ?? [];
+        setModelList(list);
+        let selection = data.defaultModel ?? null;
+        // Prefer the persisted pick when that model is still available.
+        try {
+          const stored = JSON.parse(localStorage.getItem(LS_MODEL) ?? "null") as ModelSelection | null;
+          if (stored && list.some((m) => m.provider === stored.provider && m.id === stored.modelId)) {
+            selection = stored;
+          }
+        } catch { /* malformed cache — fall back to the default */ }
+        setSelectedModel(selection);
       })
       .catch(() => {});
     return () => {
@@ -389,6 +431,18 @@ export function EntryPage() {
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
   }, [menuOpen]);
+
+  // Close the model dropdown on outside click.
+  useEffect(() => {
+    if (!modelMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (modelMenuRef.current && !modelMenuRef.current.contains(e.target as Node)) {
+        setModelMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [modelMenuOpen]);
 
   // Keep a ref mirror of the loaded cases so async classify callbacks read
   // the current list without re-creating timers on every cases change.
@@ -425,27 +479,34 @@ export function EntryPage() {
       lastClassifyText.current = trimmed;
       const seq = ++classifySeq.current;
       setClassifying(true);
-      const promise = (async (): Promise<MjuCase | null> => {
+      const promise = (async (): Promise<ClassifyResult> => {
         try {
           const res = await fetch("/api/classify", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ cwd: project.cwd, instruction: trimmed }),
           });
-          if (!res.ok) return null;
-          const data = (await res.json()) as { caseId?: string | null };
-          if (!data.caseId) return null;
-          return casesRef.current.find((c) => c.id === data.caseId) ?? null;
+          if (!res.ok) return { text: trimmed, case: null, deadline: null };
+          const data = (await res.json()) as { caseId?: string | null; deadline?: string | null };
+          const deadline = typeof data.deadline === "string" && /^\d{4}-\d{2}-\d{2}$/.test(data.deadline)
+            ? data.deadline
+            : null;
+          const hit = data.caseId
+            ? casesRef.current.find((c) => c.id === data.caseId) ?? null
+            : null;
+          return { text: trimmed, case: hit, deadline };
         } catch {
-          return null;
+          return { text: trimmed, case: null, deadline: null };
         }
       })();
       inflightClassify.current = { text: trimmed, promise };
       void promise.then((result) => {
         if (inflightClassify.current?.promise === promise) inflightClassify.current = null;
         if (seq !== classifySeq.current) return; // stale — text changed or pinned meanwhile
+        classifyResultRef.current = result;
         setClassifying(false);
-        setAiDetected(result);
+        setAiDetected(result.case);
+        setAiDeadline(result.case ? result.deadline : null);
       });
     },
     [project],
@@ -476,6 +537,7 @@ export function EntryPage() {
       setDetected(null);
       detectedRef.current = null;
       setAiDetected(null);
+      setAiDeadline(null);
       setMenuOpen(false);
       if (detectTimer.current) clearTimeout(detectTimer.current);
       return;
@@ -507,6 +569,14 @@ export function EntryPage() {
     : INBOX_TITLE;
   const showClassifying = !pinned && !detected && !aiDetected && classifying;
   const showChip = Boolean(text.trim());
+  /** Case dropdown rows after applying the search box filter (inbox is appended separately) */
+  const caseQueryLower = caseQuery.trim().toLowerCase();
+  const menuCases = caseQueryLower
+    ? cases.filter((c) => c.title.toLowerCase().includes(caseQueryLower))
+    : cases;
+  const modelDisplay = selectedModel ? `${selectedModel.provider} · ${selectedModel.modelId}` : "";
+  /** Deadline to show on the chip — only when the visible hit came from the AI fallback */
+  const chipAiDeadline = !pinned && !detected && aiDetected ? aiDeadline : null;
   const todayStr = localDateString(new Date());
 
   const configButtons: { id: ConfigPanel; label: string; needsProject?: boolean }[] = [
@@ -530,16 +600,31 @@ export function EntryPage() {
       else if (aiDetected) targetCase = aiDetected;
       else {
         // A classify for this exact instruction may still be in flight — await
-        // it instead of racing the task into the inbox prematurely.
+        // it instead of racing the task into the inbox prematurely. (The
+        // promise's earlier .then publishes the result to classifyResultRef.)
         const pending = inflightClassify.current;
-        const aiResult = pending && pending.text === instruction ? await pending.promise : null;
-        targetCase = aiResult ?? (await ensureInbox());
+        if (pending && pending.text === instruction) await pending.promise;
+        const settled = classifyResultRef.current;
+        targetCase = settled && settled.text === instruction && settled.case
+          ? settled.case
+          : await ensureInbox();
       }
+      // Simple rule: whenever the latest classify ran for this exact
+      // instruction and returned a deadline, carry it onto the task.
+      const settledClassify = classifyResultRef.current;
+      const taskDeadline = settledClassify && settledClassify.text === instruction
+        ? settledClassify.deadline ?? undefined
+        : undefined;
 
       const agentRes = await fetch("/api/agent/new", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cwd: targetCase.vaultPath, type: "prompt", message: instruction }),
+        body: JSON.stringify({
+          cwd: targetCase.vaultPath,
+          type: "prompt",
+          message: instruction,
+          ...(selectedModel ? { provider: selectedModel.provider, modelId: selectedModel.modelId } : {}),
+        }),
       });
       const agentData = await readJson(agentRes);
       const sessionId = agentData.sessionId as string;
@@ -556,6 +641,7 @@ export function EntryPage() {
           status: "进行中",
           sessionId,
           originPrompt: instruction,
+          ...(taskDeadline ? { deadline: taskDeadline } : {}),
         }),
       });
       const taskData = await readJson(taskRes);
@@ -608,6 +694,7 @@ export function EntryPage() {
         .mju-entry-init:focus-within { border-color: var(--accent); }
         .mju-entry-initbtn:hover:not(:disabled) { background: var(--accent); color: #fff; }
         .mju-entry-plus:hover { color: var(--accent); }
+        .mju-entry-model:hover { color: var(--accent); }
       `}</style>
 
       <div style={{ width: "min(640px, 92vw)", display: "flex", flexDirection: "column" }}>
@@ -746,9 +833,88 @@ export function EntryPage() {
                   marginTop: 10,
                 }}
               >
-                <span style={{ color: "var(--text-muted)", fontSize: 11, letterSpacing: ".06em" }}>
-                  {modelLabel ?? ""}
-                </span>
+                <div ref={modelMenuRef} style={{ position: "relative" }}>
+                  <button
+                    type="button"
+                    className="mju-entry-model"
+                    onClick={() => setModelMenuOpen((v) => !v)}
+                    style={{
+                      border: "none",
+                      background: "transparent",
+                      padding: 0,
+                      font: "inherit",
+                      color: "var(--text-muted)",
+                      fontSize: 11,
+                      letterSpacing: ".06em",
+                      cursor: modelList.length > 0 ? "pointer" : "default",
+                    }}
+                  >
+                    {modelDisplay}{modelList.length > 0 ? " ▾" : ""}
+                  </button>
+                  {modelMenuOpen && modelList.length > 0 && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        bottom: "100%",
+                        left: 0,
+                        marginBottom: 8,
+                        width: 280,
+                        maxHeight: 320,
+                        overflowY: "auto",
+                        background: "var(--bg)",
+                        border: "1px solid var(--border)",
+                        borderRadius: 2,
+                        zIndex: 30,
+                      }}
+                    >
+                      {modelList.map((m, i) => {
+                        const active = selectedModel?.provider === m.provider && selectedModel?.modelId === m.id;
+                        return (
+                          <button
+                            key={`${m.provider}/${m.id}`}
+                            type="button"
+                            className="mju-entry-item"
+                            onClick={() => {
+                              const next = { provider: m.provider, modelId: m.id };
+                              setSelectedModel(next);
+                              localStorage.setItem(LS_MODEL, JSON.stringify(next));
+                              setModelMenuOpen(false);
+                            }}
+                            style={{
+                              display: "flex",
+                              width: "100%",
+                              alignItems: "center",
+                              gap: 10,
+                              padding: "9px 12px",
+                              border: "none",
+                              borderBottom: i < modelList.length - 1 ? "1px solid var(--border)" : "none",
+                              background: "transparent",
+                              color: active ? "var(--text)" : "var(--text-muted)",
+                              font: "inherit",
+                              fontSize: 12,
+                              fontWeight: active ? 700 : 400,
+                              cursor: "pointer",
+                              textAlign: "left",
+                            }}
+                          >
+                            <span
+                              style={{
+                                width: 6,
+                                height: 6,
+                                flex: "none",
+                                background: active ? "var(--accent)" : "transparent",
+                              }}
+                            />
+                            <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {m.name}
+                            </span>
+                            <span style={{ fontSize: 11, color: "var(--text-dim)" }}>{m.provider}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
                 <button
                   type="button"
                   className="mju-entry-send"
@@ -803,9 +969,15 @@ export function EntryPage() {
                   >
                     {chipTitle}
                   </span>
+                  {chipAiDeadline && (
+                    <span style={{ color: "var(--text-dim)" }}>· {shortDate(chipAiDeadline)}</span>
+                  )}
                   <span
                     className="mju-entry-change"
-                    onClick={() => setMenuOpen((v) => !v)}
+                    onClick={() => {
+                      setMenuOpen((v) => !v);
+                      setCaseQuery("");
+                    }}
                     style={{
                       color: "var(--text-dim)",
                       cursor: "pointer",
@@ -827,54 +999,80 @@ export function EntryPage() {
                     transform: "translateX(-50%)",
                     marginTop: 8,
                     width: 280,
-                    maxHeight: 260,
-                    overflowY: "auto",
                     background: "var(--bg)",
                     border: "1px solid var(--border)",
                     borderRadius: 2,
                     zIndex: 30,
                   }}
                 >
-                  {[...cases.map((c) => ({ id: c.id, title: c.title, pin: { kind: "case", value: c } as Pinned })),
-                    { id: "__inbox__", title: INBOX_TITLE, pin: { kind: "inbox" } as Pinned },
-                  ].map((item, i, arr) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      className="mju-entry-item"
-                      onClick={() => {
-                        setPinned(item.pin);
-                        pinnedRef.current = item.pin;
-                        // Manual override cancels any pending AI fallback.
-                        classifySeq.current++;
-                        setClassifying(false);
-                        if (classifyTimer.current) clearTimeout(classifyTimer.current);
-                        setMenuOpen(false);
-                      }}
+                  <div style={{ padding: 8, borderBottom: "1px solid var(--border)" }}>
+                    <input
+                      autoFocus
+                      value={caseQuery}
+                      onChange={(e) => setCaseQuery(e.target.value)}
+                      placeholder="搜索案件…"
                       style={{
-                        display: "flex",
                         width: "100%",
-                        alignItems: "center",
-                        gap: 10,
-                        padding: "9px 12px",
-                        border: "none",
-                        borderBottom: i < arr.length - 1 ? "1px solid var(--border)" : "none",
-                        background: "transparent",
-                        color: "var(--text)",
+                        boxSizing: "border-box",
+                        border: "1px solid var(--border)",
+                        borderRadius: 2,
+                        padding: "6px 8px",
                         font: "inherit",
                         fontSize: 12,
-                        cursor: "pointer",
-                        textAlign: "left",
+                        background: "transparent",
+                        color: "var(--text)",
+                        outline: "none",
                       }}
-                    >
-                      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {item.title}
-                      </span>
-                      {chipTitle === item.title && (
-                        <span style={{ width: 6, height: 6, flex: "none", background: "var(--accent)" }} />
-                      )}
-                    </button>
-                  ))}
+                    />
+                  </div>
+                  <div style={{ maxHeight: 320, overflowY: "auto" }}>
+                    {caseQueryLower && menuCases.length === 0 && (
+                      <div style={{ padding: "9px 12px", fontSize: 12, color: "var(--text-dim)" }}>
+                        无匹配案件
+                      </div>
+                    )}
+                    {[...menuCases.map((c) => ({ id: c.id, title: c.title, pin: { kind: "case", value: c } as Pinned })),
+                      { id: "__inbox__", title: INBOX_TITLE, pin: { kind: "inbox" } as Pinned },
+                    ].map((item, i, arr) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className="mju-entry-item"
+                        onClick={() => {
+                          setPinned(item.pin);
+                          pinnedRef.current = item.pin;
+                          // Manual override cancels any pending AI fallback.
+                          classifySeq.current++;
+                          setClassifying(false);
+                          if (classifyTimer.current) clearTimeout(classifyTimer.current);
+                          setMenuOpen(false);
+                          setCaseQuery("");
+                        }}
+                        style={{
+                          display: "flex",
+                          width: "100%",
+                          alignItems: "center",
+                          gap: 10,
+                          padding: "9px 12px",
+                          border: "none",
+                          borderBottom: i < arr.length - 1 ? "1px solid var(--border)" : "none",
+                          background: "transparent",
+                          color: "var(--text)",
+                          font: "inherit",
+                          fontSize: 12,
+                          cursor: "pointer",
+                          textAlign: "left",
+                        }}
+                      >
+                        <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {item.title}
+                        </span>
+                        {chipTitle === item.title && (
+                          <span style={{ width: 6, height: 6, flex: "none", background: "var(--accent)" }} />
+                        )}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
