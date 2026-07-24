@@ -205,6 +205,48 @@ function ModalButton({
   );
 }
 
+/** 菜单内两步确认用的小按钮 */
+function TinyButton({
+  onClick,
+  accent,
+  children,
+}: {
+  onClick: () => void;
+  accent?: boolean;
+  children: React.ReactNode;
+}) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        ...MICRO,
+        letterSpacing: "0.06em",
+        padding: "3px 8px",
+        borderRadius: 2,
+        border: accent ? "1px solid var(--accent)" : "1px solid var(--border)",
+        background: accent
+          ? hover
+            ? "var(--accent-hover)"
+            : "var(--accent)"
+          : hover
+            ? "var(--bg-hover)"
+            : "transparent",
+        color: accent ? "#ffffff" : "var(--text-muted)",
+        cursor: "pointer",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function CaseBoardView({ caseId }: { caseId: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -224,6 +266,7 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
   const [openTaskMenuId, setOpenTaskMenuId] = useState<string | null>(null);
   const [taskMenuShown, setTaskMenuShown] = useState(false);
   const [taskMenuError, setTaskMenuError] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [runningSessionIds, setRunningSessionIds] = useState<Set<string>>(new Set());
   const menuRef = useRef<HTMLDivElement | null>(null);
   const wfMenuRef = useRef<HTMLDivElement | null>(null);
@@ -350,6 +393,7 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
       if (taskMenuRef.current && !taskMenuRef.current.contains(e.target as Node)) {
         setOpenTaskMenuId(null);
         setTaskMenuError(null);
+        setConfirmingDelete(false);
       }
     };
     document.addEventListener("mousedown", onDown);
@@ -369,6 +413,7 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
   const toggleTaskMenu = useCallback((taskId: string) => {
     setOpenTaskMenuId((open) => (open === taskId ? null : taskId));
     setTaskMenuError(null);
+    setConfirmingDelete(false);
   }, []);
 
   // 状态流转 / 改派案件：成功后关闭菜单并重新拉取任务列表；
@@ -390,6 +435,50 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
       }
     },
     [cwd, loadTasks],
+  );
+
+  // 中断执行：POST abort 后关菜单，运行脉冲随 SSE 推送自动消失
+  const abortTask = useCallback(async (task: Task) => {
+    if (!task.sessionId) return;
+    try {
+      const res = await fetch(`/api/agent/${task.sessionId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "abort" }),
+      });
+      if (!res.ok) throw new Error(`abort ${res.status}`);
+      setOpenTaskMenuId(null);
+      setTaskMenuError(null);
+    } catch {
+      setTaskMenuError("中断失败，请重试");
+    }
+  }, []);
+
+  // 删除任务（两步确认后调用）：运行中的任务先 abort（失败也继续删），再 DELETE
+  const deleteTask = useCallback(
+    async (task: Task) => {
+      try {
+        if (task.sessionId && runningSessionIds.has(task.sessionId)) {
+          await fetch(`/api/agent/${task.sessionId}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ type: "abort" }),
+          }).catch(() => {});
+        }
+        const res = await fetch(
+          `/api/tasks?cwd=${encodeURIComponent(cwd)}&id=${encodeURIComponent(task.id)}`,
+          { method: "DELETE" },
+        );
+        if (!res.ok) throw new Error(`delete ${res.status}`);
+        setOpenTaskMenuId(null);
+        setTaskMenuError(null);
+        setConfirmingDelete(false);
+        await loadTasks();
+      } catch {
+        setTaskMenuError("删除失败，请重试");
+      }
+    },
+    [cwd, loadTasks, runningSessionIds],
   );
 
   // 选择工作流：先开模态（任务清单加载中），再拉 preview
@@ -751,6 +840,36 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
                               {c.title}
                             </MenuRow>
                           ))}
+                        <div style={{ height: 1, background: "var(--border)", margin: "4px 0" }} />
+                        <MenuRow micro disabled={!isRunning} onClick={() => abortTask(task)}>
+                          中断执行
+                        </MenuRow>
+                        {confirmingDelete ? (
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              padding: "7px 12px",
+                            }}
+                          >
+                            <span style={{ ...MICRO, letterSpacing: "0.06em", color: "var(--accent)" }}>
+                              确认删除？
+                            </span>
+                            <span style={{ display: "inline-flex", gap: 6 }}>
+                              <TinyButton accent onClick={() => deleteTask(task)}>
+                                删除
+                              </TinyButton>
+                              <TinyButton onClick={() => setConfirmingDelete(false)}>
+                                取消
+                              </TinyButton>
+                            </span>
+                          </div>
+                        ) : (
+                          <MenuRow micro onClick={() => setConfirmingDelete(true)}>
+                            <span style={{ color: "var(--accent)" }}>删除任务</span>
+                          </MenuRow>
+                        )}
                         {taskMenuError && (
                           <div style={{ fontSize: 11, color: "var(--accent)", padding: "6px 12px 4px" }}>
                             {taskMenuError}

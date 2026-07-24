@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import type { Case, Task, TaskStatus } from "@/lib/mju-models";
 import type { SessionInfo, SessionTreeNode } from "@/lib/types";
 import type { CaseDocEntry } from "@/app/api/casedocs/route";
 import { encodeFilePathForApi } from "@/lib/file-paths";
+import { sendAgentCommand } from "@/lib/agent-client";
 import { useGlobalKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { AppNav } from "./AppNav";
 import { MarkdownBody } from "./MarkdownBody";
@@ -117,6 +118,7 @@ function CenteredNote({ text, accent }: { text: string; accent?: boolean }) {
 }
 
 export function TaskDetailView({ taskId }: { taskId: string }) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const cwd = searchParams.get("cwd") ?? "";
 
@@ -152,6 +154,24 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
   const [metaMenuError, setMetaMenuError] = useState<string | null>(null);
   const [metaBusy, setMetaBusy] = useState(false);
   const metaMenuRef = useRef<HTMLDivElement | null>(null);
+
+  // 中断 / 删除
+  const [aborting, setAborting] = useState(false);
+  const [abortError, setAbortError] = useState<string | null>(null);
+  const [deleteArmed, setDeleteArmed] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 文档导出 DOCX
+  const [templates, setTemplates] = useState<string[]>([]);
+  const [exportingPath, setExportingPath] = useState<string | null>(null);
+  const [exportedPath, setExportedPath] = useState<string | null>(null);
+  const [exportErrors, setExportErrors] = useState<Record<string, string>>({});
+  const [exportedDeliverables, setExportedDeliverables] = useState<Record<string, string>>({});
+  const [templatePickerFor, setTemplatePickerFor] = useState<string | null>(null);
+  const [hoveredDocPath, setHoveredDocPath] = useState<string | null>(null);
+  const templatePickerRef = useRef<HTMLDivElement | null>(null);
 
   const selectedPathRef = useRef<string | null>(null);
   selectedPathRef.current = selectedPath;
@@ -342,6 +362,65 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
 
   const isRunning = Boolean(sessionId && runningSessionIds.has(sessionId));
 
+  // ---------- 中断 / 删除 ----------
+
+  const handleAbort = useCallback(() => {
+    if (!sessionId || aborting) return;
+    setAborting(true);
+    setAbortError(null);
+    sendAgentCommand(sessionId, { type: "abort" })
+      .then(() => setAborting(false))
+      .catch((e) => {
+        setAborting(false);
+        setAbortError(e instanceof Error ? e.message : String(e));
+      });
+  }, [sessionId, aborting]);
+
+  const disarmDelete = useCallback(() => {
+    if (deleteTimerRef.current) {
+      clearTimeout(deleteTimerRef.current);
+      deleteTimerRef.current = null;
+    }
+    setDeleteArmed(false);
+  }, []);
+
+  // 卸载时清掉确认倒计时
+  useEffect(() => disarmDelete, [disarmDelete]);
+
+  const handleDelete = useCallback(() => {
+    if (deleting) return;
+    // 两步确认：第一次点击进入确认态，3 秒未确认自动还原
+    if (!deleteArmed) {
+      setDeleteError(null);
+      setDeleteArmed(true);
+      deleteTimerRef.current = setTimeout(() => {
+        deleteTimerRef.current = null;
+        setDeleteArmed(false);
+      }, 3000);
+      return;
+    }
+    disarmDelete();
+    setDeleting(true);
+    setDeleteError(null);
+    void (async () => {
+      try {
+        // 运行中先中断（失败也继续删除）；无 sessionId 直接跳过
+        if (sessionId && isRunning) {
+          await sendAgentCommand(sessionId, { type: "abort" }).catch(() => {});
+        }
+        const res = await fetch(
+          `/api/tasks?cwd=${encodeURIComponent(cwd)}&id=${encodeURIComponent(taskId)}`,
+          { method: "DELETE" },
+        );
+        if (!res.ok) throw new Error(`delete ${res.status}`);
+        router.push(`/board/${task?.caseId ?? ""}?cwd=${encodeURIComponent(cwd)}`);
+      } catch (e) {
+        setDeleting(false);
+        setDeleteError(e instanceof Error ? e.message : String(e));
+      }
+    })();
+  }, [deleting, deleteArmed, disarmDelete, sessionId, isRunning, cwd, taskId, router, task?.caseId]);
+
   // ---------- 分支导航回调 ----------
 
   const handleBranchDataChange = useCallback(
@@ -475,10 +554,95 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
     prevRunningRef.current = isRunning;
   }, [isRunning, caseId, loadDocs, loadDocContent]);
 
+  // ---------- 文档导出 DOCX ----------
+
+  // 挂载时拉一次模板列表（可能为空）
+  useEffect(() => {
+    if (!cwd) return;
+    let cancelled = false;
+    fetch(`/api/deliverables/generate?cwd=${encodeURIComponent(cwd)}`)
+      .then((res) => (res.ok ? res.json() : { templates: [] }))
+      .then((data: { templates?: string[] }) => {
+        if (!cancelled) setTemplates(data.templates ?? []);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [cwd]);
+
+  // 点击模板浮层外部时收起
+  useEffect(() => {
+    if (!templatePickerFor) return;
+    const onDown = (e: MouseEvent) => {
+      if (templatePickerRef.current && !templatePickerRef.current.contains(e.target as Node)) {
+        setTemplatePickerFor(null);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [templatePickerFor]);
+
+  const handleGenerate = useCallback(
+    async (sourcePath: string, templateName?: string) => {
+      if (exportingPath || !caseId) return;
+      setTemplatePickerFor(null);
+      setExportingPath(sourcePath);
+      setExportErrors((prev) => {
+        const next = { ...prev };
+        delete next[sourcePath];
+        return next;
+      });
+      try {
+        const res = await fetch("/api/deliverables/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            cwd,
+            caseId,
+            sourcePath,
+            taskId,
+            ...(templateName ? { templateName } : {}),
+          }),
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          deliverable?: { filePath?: string };
+          error?: string;
+        };
+        if (!res.ok || data.error) throw new Error(data.error ?? `generate ${res.status}`);
+        if (data.deliverable?.filePath) {
+          const filePath = data.deliverable.filePath;
+          setExportedDeliverables((prev) => ({ ...prev, [sourcePath]: filePath }));
+        }
+        setExportedPath(sourcePath);
+        setTimeout(() => setExportedPath((p) => (p === sourcePath ? null : p)), 2500);
+      } catch (e) {
+        setExportErrors((prev) => ({
+          ...prev,
+          [sourcePath]: e instanceof Error ? e.message : String(e),
+        }));
+      } finally {
+        setExportingPath(null);
+      }
+    },
+    [exportingPath, caseId, cwd, taskId],
+  );
+
+  const handleDocxClick = useCallback(
+    (sourcePath: string) => {
+      if (exportingPath) return;
+      if (templates.length > 0) {
+        setTemplatePickerFor((p) => (p === sourcePath ? null : sourcePath));
+      } else {
+        void handleGenerate(sourcePath);
+      }
+    },
+    [exportingPath, templates, handleGenerate],
+  );
+
   // ---------- 渲染 ----------
 
-  const boardHref = task ? `/board/${task.caseId}?cwd=${encodeURIComponent(cwd)}` : undefined;
-  const today = todayString();
+  const boardHref = task ? `/board/${task.caseId}?cwd=${encodeURIComponent(cwd)}` : undefined;  const today = todayString();
   const overdue = Boolean(task?.deadline && task.deadline.slice(0, 10) < today && task.status !== "完成");
 
   const shell = (content: React.ReactNode) => (
@@ -527,16 +691,58 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
         >
           ← {currentCase?.title ?? "返回看板"}
         </Link>
-        {sessionId && (
-          <a
-            href={`/api/sessions/${encodeURIComponent(sessionId)}/export?inline=1`}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ ...MICRO, color: "var(--text-muted)", textDecoration: "none", flexShrink: 0 }}
+        <span style={{ display: "flex", alignItems: "baseline", gap: 14, flexShrink: 0 }}>
+          {sessionId && isRunning && (
+            <button
+              type="button"
+              onClick={handleAbort}
+              disabled={aborting}
+              style={{
+                ...MICRO,
+                padding: 0,
+                border: "none",
+                background: "transparent",
+                color: "var(--accent)",
+                cursor: aborting ? "not-allowed" : "pointer",
+                opacity: aborting ? 0.4 : 1,
+              }}
+            >
+              {aborting ? "中断中…" : "中断"}
+            </button>
+          )}
+          {sessionId && (
+            <a
+              href={`/api/sessions/${encodeURIComponent(sessionId)}/export?inline=1`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ ...MICRO, color: "var(--text-muted)", textDecoration: "none" }}
+            >
+              导出
+            </a>
+          )}
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={deleting}
+            style={{
+              ...MICRO,
+              padding: 0,
+              border: "none",
+              background: "transparent",
+              color: deleteArmed ? "var(--accent)" : "var(--text-muted)",
+              cursor: deleting ? "not-allowed" : "pointer",
+              opacity: deleting ? 0.4 : 1,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = "var(--accent)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = deleteArmed ? "var(--accent)" : "var(--text-muted)";
+            }}
           >
-            导出
-          </a>
-        )}
+            {deleting ? "删除中…" : deleteArmed ? "确认删除？" : "删除"}
+          </button>
+        </span>
       </div>
       <div style={{ marginTop: 10, fontSize: 16, fontWeight: 700, letterSpacing: "-0.01em" }}>
         {task.title}
@@ -676,6 +882,8 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
           </span>
         )}
       </div>
+      {abortError && <ErrorLine text={abortError} />}
+      {deleteError && <ErrorLine text={deleteError} />}
     </div>
   );
 
@@ -793,41 +1001,132 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
           {(docs ?? []).map((doc) => {
             const selected = doc.path === selectedPath;
             const dir = doc.relPath !== doc.name ? doc.relPath.slice(0, doc.relPath.length - doc.name.length).replace(/[\\/]$/, "") : "";
+            const exporting = exportingPath === doc.path;
+            const exported = exportedPath === doc.path;
+            const deliverablePath = exportedDeliverables[doc.path];
+            const deliverableRel = deliverablePath && currentCase && deliverablePath.startsWith(currentCase.vaultPath + "/")
+              ? deliverablePath.slice(currentCase.vaultPath.length + 1)
+              : deliverablePath;
             return (
-              <button
+              <div
                 key={doc.path}
-                type="button"
-                onClick={() => setSelectedPath(doc.path)}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "baseline",
-                  gap: 12,
-                  width: "100%",
-                  marginTop: 6,
-                  padding: "7px 10px",
-                  border: "1px solid var(--border)",
-                  borderRadius: 2,
-                  background: selected ? "var(--bg-selected)" : "transparent",
-                  color: "var(--text)",
-                  cursor: "pointer",
-                  textAlign: "left",
-                }}
+                style={{ position: "relative", marginTop: 6 }}
+                onMouseEnter={() => setHoveredDocPath(doc.path)}
+                onMouseLeave={() => setHoveredDocPath(null)}
               >
-                <span style={{ minWidth: 0 }}>
-                  <span style={{ display: "block", fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {doc.name}
-                  </span>
-                  {dir && (
-                    <span style={{ ...MONO, display: "block", fontSize: 10, color: "var(--text-dim)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {dir}
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSelectedPath(doc.path)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setSelectedPath(doc.path);
+                    }
+                  }}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "baseline",
+                    gap: 12,
+                    width: "100%",
+                    padding: "7px 10px",
+                    border: "1px solid var(--border)",
+                    borderRadius: 2,
+                    background: selected ? "var(--bg-selected)" : "transparent",
+                    color: "var(--text)",
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                >
+                  <span style={{ minWidth: 0 }}>
+                    <span style={{ display: "block", fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {doc.name}
                     </span>
-                  )}
-                </span>
-                <span style={{ ...MONO, fontSize: 10, color: "var(--text-dim)", flexShrink: 0 }}>
-                  {formatMtime(doc.mtime)}
-                </span>
-              </button>
+                    {dir && (
+                      <span style={{ ...MONO, display: "block", fontSize: 10, color: "var(--text-dim)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {dir}
+                      </span>
+                    )}
+                  </span>
+                  <span style={{ display: "flex", alignItems: "baseline", gap: 10, flexShrink: 0 }}>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDocxClick(doc.path);
+                      }}
+                      disabled={exporting}
+                      style={{
+                        ...MICRO,
+                        padding: 0,
+                        border: "none",
+                        background: "transparent",
+                        color: exported ? "var(--accent)" : "var(--text-muted)",
+                        cursor: exporting ? "not-allowed" : "pointer",
+                        opacity: hoveredDocPath === doc.path || exporting || exported ? 1 : 0,
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.color = "var(--accent)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.color = exported ? "var(--accent)" : "var(--text-muted)";
+                      }}
+                    >
+                      {exporting ? "导出中…" : exported ? "已导出 ✓" : "DOCX"}
+                    </button>
+                    <span style={{ ...MONO, fontSize: 10, color: "var(--text-dim)" }}>
+                      {formatMtime(doc.mtime)}
+                    </span>
+                  </span>
+                </div>
+                {deliverableRel && (
+                  <div style={{ ...MONO, fontSize: 10, color: "var(--text-muted)", marginTop: 3, paddingLeft: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    → {deliverableRel}
+                  </div>
+                )}
+                {exportErrors[doc.path] && (
+                  <div style={{ fontSize: 11, color: "var(--accent)", marginTop: 3, paddingLeft: 10 }}>
+                    {exportErrors[doc.path]}
+                  </div>
+                )}
+                {templatePickerFor === doc.path && (
+                  <div
+                    ref={templatePickerRef}
+                    style={{ ...MENU_STYLE, left: "auto", right: 0, marginTop: 2 }}
+                  >
+                    {templates.map((name) => (
+                      <button
+                        key={name}
+                        type="button"
+                        onClick={() => void handleGenerate(doc.path, name)}
+                        style={MENU_ITEM_STYLE}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = "var(--bg-hover)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = "transparent";
+                        }}
+                      >
+                        {name}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => void handleGenerate(doc.path)}
+                      style={{ ...MENU_ITEM_STYLE, color: "var(--text-muted)" }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = "var(--bg-hover)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = "transparent";
+                      }}
+                    >
+                      不使用模板
+                    </button>
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>

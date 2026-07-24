@@ -61,8 +61,11 @@ app/api/
   auth/providers/route.ts         GET OAuth provider list
   casedocs/route.ts               GET ?cwd=&caseId= — case folder .md files, newest first
   cases/route.ts                  GET/POST cases; POST {action:"ensure_inbox"} creates the inbox case
+  classify/route.ts               POST {cwd, instruction} → {caseId|null} — default-model case attribution
   cwd/validate/route.ts           POST validate/select a cwd
   default-cwd/route.ts            POST create ~/pi-cwd-YYYYMMDD
+  deliverables/route.ts           GET/POST/PATCH/DELETE deliverables
+  deliverables/generate/route.ts  GET template list | POST pandoc md→docx (templates/legal/*.docx)
   files/[...path]/route.ts        GET file contents for viewer
   home/route.ts                   GET user home directory
   models/route.ts                 GET { models, modelList, defaultModel }
