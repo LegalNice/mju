@@ -4,10 +4,10 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import type { Case, Task, TaskStatus } from "@/lib/mju-models";
+import type { Case, Deliverable, DeliverableStatus, Task, TaskStatus } from "@/lib/mju-models";
 import type { SessionInfo, SessionTreeNode } from "@/lib/types";
 import type { CaseDocEntry } from "@/app/api/casedocs/route";
-import { encodeFilePathForApi } from "@/lib/file-paths";
+import { encodeFilePathForApi, getFileName } from "@/lib/file-paths";
 import { sendAgentCommand } from "@/lib/agent-client";
 import { useGlobalKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { AppNav } from "./AppNav";
@@ -64,6 +64,22 @@ function treeHasBranch(nodes: SessionTreeNode[]): boolean {
 }
 
 const STATUS_OPTIONS: TaskStatus[] = ["待办", "进行中", "完成"];
+
+const DELIVERABLE_STATUS_LABEL: Record<DeliverableStatus, string> = {
+  draft: "草稿",
+  "internal-review": "内审",
+  "client-review": "客户审",
+  final: "定稿",
+  archived: "归档",
+};
+
+const DELIVERABLE_STATUS_COLOR: Record<DeliverableStatus, string> = {
+  draft: "var(--text-dim)",
+  "internal-review": "var(--text-muted)",
+  "client-review": "var(--text)",
+  final: "var(--accent)",
+  archived: "var(--text-dim)",
+};
 
 const MENU_STYLE: CSSProperties = {
   position: "absolute",
@@ -137,6 +153,9 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
   const [docContentError, setDocContentError] = useState<string | null>(null);
 
   const [runningSessionIds, setRunningSessionIds] = useState<Set<string>>(new Set());
+
+  // 任务关联的交付物
+  const [deliverables, setDeliverables] = useState<Deliverable[]>([]);
 
   // 分支导航：数据由 ChatWindow 经 onBranchDataChange 流出（同 AppShell）
   const [branchTree, setBranchTree] = useState<SessionTreeNode[]>([]);
@@ -522,6 +541,22 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
     loadDocs().catch((e) => setDocsError(String(e)));
   }, [caseId, loadDocs]);
 
+  // ---------- 交付物 ----------
+
+  const loadDeliverables = useCallback(async () => {
+    if (!cwd) return;
+    const res = await fetch(
+      `/api/deliverables?cwd=${encodeURIComponent(cwd)}&taskId=${encodeURIComponent(taskId)}`,
+    );
+    if (!res.ok) throw new Error(`deliverables ${res.status}`);
+    const data = (await res.json()) as { deliverables: Deliverable[] };
+    setDeliverables(data.deliverables ?? []);
+  }, [cwd, taskId]);
+
+  useEffect(() => {
+    loadDeliverables().catch(() => {});
+  }, [loadDeliverables]);
+
   useEffect(() => {
     if (!selectedPath) {
       setDocContent(null);
@@ -616,6 +651,8 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
         }
         setExportedPath(sourcePath);
         setTimeout(() => setExportedPath((p) => (p === sourcePath ? null : p)), 2500);
+        // 新交付物立即出现在 meta 下方
+        void loadDeliverables().catch(() => {});
       } catch (e) {
         setExportErrors((prev) => ({
           ...prev,
@@ -625,7 +662,7 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
         setExportingPath(null);
       }
     },
-    [exportingPath, caseId, cwd, taskId],
+    [exportingPath, caseId, cwd, taskId, loadDeliverables],
   );
 
   const handleDocxClick = useCallback(
@@ -882,6 +919,39 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
           </span>
         )}
       </div>
+      {deliverables.length > 0 && (
+        <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ ...MICRO, color: "var(--text-dim)" }}>交付物</span>
+          {deliverables.map((d) => (
+            <span
+              key={d.id}
+              title={d.filePath}
+              style={{
+                display: "inline-flex",
+                alignItems: "baseline",
+                gap: 6,
+                border: "1px solid var(--border)",
+                borderRadius: 2,
+                padding: "4px 8px",
+                fontSize: 12,
+                color: "var(--text)",
+              }}
+            >
+              <span>{d.title || getFileName(d.filePath)}</span>
+              <span style={{ fontSize: 10, color: "var(--text-dim)" }}>v{d.version}</span>
+              <span
+                style={{
+                  fontSize: 10,
+                  color: DELIVERABLE_STATUS_COLOR[d.status],
+                  textDecoration: d.status === "archived" ? "line-through" : undefined,
+                }}
+              >
+                {DELIVERABLE_STATUS_LABEL[d.status]}
+              </span>
+            </span>
+          ))}
+        </div>
+      )}
       {abortError && <ErrorLine text={abortError} />}
       {deleteError && <ErrorLine text={deleteError} />}
     </div>

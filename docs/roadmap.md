@@ -265,12 +265,12 @@ interface Deliverable {
 
 ---
 
-## 第四阶段：交付物与 DOCX 生成 🟡 管道已完成
+## 第四阶段：交付物与 DOCX 生成 ✅ 已完成
 
 ### 4.1 交付物管理 ✅
 
 - `app/api/deliverables/route.ts`：GET/POST/PATCH/DELETE（状态机 draft → internal-review → client-review → final → archived，版本号）
-- 交付物列表 UI（Board/子页展示）待后续
+- 案件 Board「交付物」区：卡片（标题/类型/版本/状态 chip），点 chip 推进状态；任务子页 meta 下方显示关联交付物
 
 ### 4.2 Markdown → DOCX 管道 ✅
 
@@ -279,6 +279,10 @@ interface Deliverable {
 - 生成后自动登记 Deliverable 并回写 `task.deliverablePath`
 - 任务子页右栏文档行 hover 出 `DOCX` 按钮（有模板时浮层选择）→ 导出 → `已导出 ✓` + 相对路径反馈
 
+### 4.3 交付 UI ✅
+
+- 任务完成后一键生成 DOCX（4.2 右栏按钮）；Board/子页交付物状态可视化与推进
+
 ### 同批完成：任务中断与删除
 
 - Board 卡片 ⋯ 菜单：`中断执行`（运行中可点，POST {type:"abort"}）+ `删除任务`（两步确认，运行中先 abort 再删）
@@ -286,35 +290,7 @@ interface Deliverable {
 
 ### 验证
 
-- deliverables CRUD 测试通过；pandoc 生成经 `file` 验证为真 Word 文档；Board 删除流程与 DOCX 按钮均 CDP 端到端实测
-
----
-
-### 4.1 交付物管理
-
-- `app/api/deliverables/route.ts`：交付物创建、状态更新、版本管理
-- `components/DeliverableList.tsx`（新）
-  - 案件页面显示交付物列表
-  - 状态：草稿 / 内部复核 / 客户复核 / 定稿 / 归档
-
-### 4.2 Markdown → DOCX 管道
-
-- `lib/docx-generator.ts`
-  - 使用 `mammoth` 或 `docx` 库把 Markdown 转 DOCX
-  - 支持读取 Obsidian `templates/legal/` 下的 DOCX 母版保留格式
-  - 生成路径：Obsidian 案卷目录或项目目录
-- `app/api/deliverables/generate/route.ts`
-  - POST `{ taskId, templateName? }`
-
-### 4.3 交付 UI
-
-- 任务完成后，一键"生成 DOCX"
-- 交付物列表显示文件路径和状态
-
-### 验证
-
-- 完成"合同审查"任务后，能生成对外法律意见书 DOCX
-- DOCX 文件保存在 Obsidian 案卷目录
+- deliverables CRUD 测试通过；pandoc 生成经 `file` 验证为真 Word 文档；Board 删除流程、状态推进、DOCX 按钮均 CDP 端到端实测
 
 ---
 
