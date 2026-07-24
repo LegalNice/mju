@@ -12,11 +12,14 @@ export interface ObsidianCaseCandidate {
 }
 
 const OBSIDIAN_CONFIG_DIR = ".obsidian";
+// 与标准结构（lib/mju-guidance.ts）保持一致：案卷三档 + 项目三档
 const CASE_BASE_DIRS: Array<{ path: string; type: CaseType }> = [
   { path: join("ops", "cases", "案卷"), type: "litigation" },
+  { path: join("ops", "cases", "休眠案卷"), type: "litigation" },
+  { path: join("ops", "cases", "归档案卷"), type: "litigation" },
   { path: join("ops", "projects", "活跃项目"), type: "advisory" },
   { path: join("ops", "projects", "休眠项目"), type: "advisory" },
-  { path: join("ops", "cases", "休眠案卷"), type: "litigation" },
+  { path: join("ops", "projects", "归档项目"), type: "advisory" },
 ];
 
 export function isObsidianVault(cwd: string): boolean {

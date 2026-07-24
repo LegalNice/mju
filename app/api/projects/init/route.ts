@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { NextResponse } from "next/server";
 import { initStore, readStore, writeStore } from "@/lib/mju-store";
 import { isObsidianVault, scanObsidianCases } from "@/lib/mju-obsidian";
-import { ensureCanonicalStructure, hasCanonicalStructure, writeGuidanceIfAbsent } from "@/lib/mju-guidance";
+import { ensureCanonicalStructure, hasCanonicalStructure, installDefaultSkills, writeGuidanceIfAbsent } from "@/lib/mju-guidance";
 import type { Case } from "@/lib/mju-models";
 
 export const runtime = "nodejs";
@@ -18,10 +18,11 @@ export async function POST(req: Request) {
     const name = body.name?.trim() || cwd.split("/").filter(Boolean).pop() || "Mju 项目";
     const store = initStore(cwd, name, body.caseType);
 
-    // New-user onboarding: create the canonical ops/ layout and the agent
-    // guidance file on request (entry page offers both, on by default).
+    // New-user onboarding: create the canonical ops/ layout, the agent
+    // guidance file, and the bundled default skills on request.
     const createdDirs = body.createSkeleton ? ensureCanonicalStructure(cwd) : [];
     const guidanceWritten = body.writeGuidance ? writeGuidanceIfAbsent(cwd) : false;
+    const installedSkills = body.createSkeleton ? installDefaultSkills(cwd) : [];
 
     // 扫描并导入案卷：Obsidian vault 或具备标准结构的普通目录都支持
     if (isObsidianVault(cwd) || hasCanonicalStructure(cwd)) {
@@ -48,7 +49,7 @@ export async function POST(req: Request) {
       writeStore(cwd, store);
     }
 
-    return NextResponse.json({ success: true, store, createdDirs, guidanceWritten });
+    return NextResponse.json({ success: true, store, createdDirs, guidanceWritten, installedSkills });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : String(error) },

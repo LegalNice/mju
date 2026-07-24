@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 /**
@@ -16,6 +16,7 @@ export const CANONICAL_DIRS = [
   "ops/cases/归档案卷",
   "ops/projects/活跃项目",
   "ops/projects/休眠项目",
+  "ops/projects/归档项目",
   "ops/common/任务",
   "ops/common/日程",
   "templates/legal",
@@ -51,6 +52,7 @@ export const GUIDANCE_TEMPLATE = `# Agent 工作指导（Mju 标准结构）
 - \`ops/cases/案卷/\` — 诉讼案件，一案一个文件夹
 - \`ops/cases/休眠案卷/\`、\`ops/cases/归档案卷/\` — 休眠与归档
 - \`ops/projects/活跃项目/\` — 常年顾问与专项项目
+- \`ops/projects/休眠项目/\`、\`ops/projects/归档项目/\` — 项目休眠与归档
 - \`ops/common/任务/\`、\`ops/common/日程/\` — 不属于具体案件的通用事项
 - \`templates/legal/\` — 文书模板（.md / .docx 母版）
 
@@ -97,4 +99,26 @@ export function writeGuidanceIfAbsent(cwd: string): boolean {
   if (existsSync(path)) return false;
   writeFileSync(path, GUIDANCE_TEMPLATE, "utf8");
   return true;
+}
+
+/**
+ * Copy the bundled default skills (defaults/skills/ in the repo) into the
+ * project's `.agents/skills/` so pi's resource loader discovers them as
+ * project skills. Existing skill folders are left untouched.
+ * Returns the skill names that were installed.
+ */
+export function installDefaultSkills(cwd: string): string[] {
+  const source = join(process.cwd(), "defaults", "skills");
+  if (!existsSync(source)) return [];
+  const targetRoot = join(cwd, ".agents", "skills");
+  const installed: string[] = [];
+  for (const entry of readdirSync(source, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const target = join(targetRoot, entry.name);
+    if (existsSync(target)) continue;
+    mkdirSync(targetRoot, { recursive: true });
+    cpSync(join(source, entry.name), target, { recursive: true });
+    installed.push(entry.name);
+  }
+  return installed;
 }
