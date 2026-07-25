@@ -15,11 +15,18 @@ export interface MjuAgentNames {
   chariot?: string;
 }
 
+export interface MjuDocxConfig {
+  /** Override the default `<cwd>/templates/legal` DOCX template directory. */
+  templatesDir?: string;
+}
+
 export interface MjuConfig {
   /** "provider/id" model ref used for entry-page case classification. */
   classifyModel?: string;
   /** Custom display names for the three default legal agents. */
   agents?: MjuAgentNames;
+  /** DOCX generation options. */
+  docx?: MjuDocxConfig;
 }
 
 function configPath(): string {
@@ -33,6 +40,13 @@ function isValidAgentNames(value: unknown): value is MjuAgentNames {
     const v = names[key];
     if (v !== undefined && typeof v !== "string") return false;
   }
+  return true;
+}
+
+function isValidDocxConfig(value: unknown): value is MjuDocxConfig {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const cfg = value as Record<string, unknown>;
+  if (cfg.templatesDir !== undefined && typeof cfg.templatesDir !== "string") return false;
   return true;
 }
 
@@ -53,6 +67,7 @@ export function readMjuConfig(): MjuConfig {
     const result: MjuConfig = {};
     if (typeof config.classifyModel === "string") result.classifyModel = config.classifyModel;
     if (isValidAgentNames(config.agents)) result.agents = config.agents;
+    if (isValidDocxConfig(config.docx)) result.docx = config.docx;
     return result;
   } catch {
     return {};

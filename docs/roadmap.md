@@ -307,7 +307,8 @@ interface Deliverable {
 
 - `~/.mju/config.json` 已支持 `classifyModel` 和 `agents.justice/magician/chariot` 显示名自定义
 - `~/.mju/workflows.json` 可覆盖内置工作流；非法时自动回退到内置三条
-- **延后**：Obsidian 路径映射、DOCX 模板路径外置（当前仍用标准 `ops/` 结构和 `templates/legal/`）
+- `~/.mju/config.json` 已支持 `docx.templatesDir`，可覆盖默认 `<cwd>/templates/legal`
+- **延后**：Obsidian 路径映射外置（当前仍用标准 `ops/` 结构）
 
 ### 5.3 清理与文档 ✅
 
@@ -316,12 +317,14 @@ interface Deliverable {
 - `docs/architecture.md` 已存在
 - `README.zh-CN.md` 已更新：说明 Obsidian 是推荐存储，非必需
 
-### 5.4 测试 ✅ 部分补齐
+### 5.4 测试 ✅ 已补齐 roadmap 列出的四项
 
+- `lib/mju-store.test.mjs`（原有）：隔离 store、迁移、异常处理
 - 新增 `lib/mju-guidance.test.mjs`：骨架目录幂等创建、主文件不覆盖、guidance 只写一次
 - 新增 `lib/workflows.test.mjs`：预览不落库、诉讼工作流生成 5 任务、重复启动冲突、workflows.json 覆盖/非法回退、Agent 显示名映射
-- 跑通 `tsc --noEmit`、`npm run lint`、全部 `lib/*.test.mjs`
-- **仍缺**：`lib/mju-models.test.mjs`、`lib/docx-generator.test.mjs`
+- 新增 `lib/mju-models.test.mjs`：`createEmptyStore`、`DEFAULT_STORE`、`touchStore`
+- 新增 `lib/docx-generator.test.mjs` + `app/api/deliverables/generate/route.test.mjs`：模板扫描、唯一输出路径、路径穿越拒绝、路由校验
+- 跑通 `tsc --noEmit`、`npm run lint`、`node --test lib/*.test.mjs app/api/deliverables/generate/route.test.mjs`
 
 ### 验证
 

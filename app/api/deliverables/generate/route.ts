@@ -1,61 +1,23 @@
-import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
-import { basename, extname, join, resolve, sep } from "node:path";
+import { basename, resolve, sep } from "node:path";
 import { NextResponse } from "next/server";
 import { writeStore } from "@/lib/mju-store";
+import { readMjuConfig } from "@/lib/mju-config";
+import { generateDocx, listTemplates, resolveTemplatesDir } from "@/lib/docx-generator";
 import type { Deliverable } from "@/lib/mju-models";
 import { findCase, getProjectStore, isNonEmptyString, isOptionalString, isProjectStore } from "@/lib/mju-route-utils";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const PANDOC_TIMEOUT_MS = 60_000;
-
-/** Templates live under <vault>/templates/legal/** (subdirectories included). */
-function templatesDir(cwd: string): string {
-  return join(cwd, "templates", "legal");
-}
-
-function listTemplates(cwd: string): string[] {
-  const out: string[] = [];
-  const walk = (dir: string, depth: number): void => {
-    if (depth > 4 || out.length >= 100) return;
-    let entries;
-    try {
-      entries = readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      const full = join(dir, entry.name);
-      if (entry.isDirectory() && !entry.name.startsWith(".")) walk(full, depth + 1);
-      else if (entry.isFile() && entry.name.toLowerCase().endsWith(".docx")) {
-        // Name shown in the picker: relative path without extension, e.g. "evidence-and-litigation/民事起诉状（要素式）"
-        out.push(full.slice(templatesDir(cwd).length + 1, -extname(entry.name).length));
-      }
-    }
-  };
-  walk(templatesDir(cwd), 0);
-  return out;
-}
-
-function uniqueDocxPath(sourcePath: string): string {
-  const base = sourcePath.replace(/\.md$/i, "");
-  let candidate = `${base}.docx`;
-  let n = 2;
-  while (existsSync(candidate)) {
-    candidate = `${base}-${n}.docx`;
-    n++;
-  }
-  return candidate;
-}
-
 /** GET ?cwd= — available DOCX template names. */
 export async function GET(req: Request) {
   const params = new URL(req.url).searchParams;
   const project = getProjectStore(params.get("cwd"));
   if (!isProjectStore(project)) return project.response;
-  return NextResponse.json({ templates: listTemplates(project.cwd) });
+  const config = readMjuConfig();
+  return NextResponse.json({
+    templates: listTemplates(project.cwd, { templatesDir: config.docx?.templatesDir }),
+  });
 }
 
 /**
@@ -82,34 +44,14 @@ export async function POST(req: Request) {
     if (sourcePath !== vaultRoot && !sourcePath.startsWith(vaultRoot + sep)) {
       return NextResponse.json({ error: "sourcePath must be inside the case folder" }, { status: 400 });
     }
-    if (!/\.md$/i.test(sourcePath) || !existsSync(sourcePath)) {
-      return NextResponse.json({ error: "sourcePath must be an existing .md file" }, { status: 400 });
-    }
 
-    const args = [sourcePath, "-o", ""] as string[];
-    const outputPath = uniqueDocxPath(sourcePath);
-    args[2] = outputPath;
-    if (body.templateName) {
-      const name = body.templateName.trim();
-      // Template names are relative paths under templates/legal (may include
-      // subdirectories) — reject traversal instead of whitelisting characters.
-      if (!name || name.includes("..") || name.startsWith("/") || name.includes("\\")) {
-        return NextResponse.json({ error: "invalid templateName" }, { status: 400 });
-      }
-      const templatePath = resolve(templatesDir(project.cwd), `${name}.docx`);
-      const templatesRoot = resolve(templatesDir(project.cwd));
-      if (!templatePath.startsWith(templatesRoot + sep) || !existsSync(templatePath)) {
-        return NextResponse.json({ error: "template not found" }, { status: 404 });
-      }
-      args.push("--reference-doc", templatePath);
-    }
-
-    try {
-      execFileSync("pandoc", args, { timeout: PANDOC_TIMEOUT_MS, stdio: ["ignore", "ignore", "pipe"] });
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
-      return NextResponse.json({ error: `pandoc failed: ${detail.slice(0, 300)}` }, { status: 500 });
-    }
+    const config = readMjuConfig();
+    const templatesDir = resolveTemplatesDir(project.cwd, { templatesDir: config.docx?.templatesDir });
+    const outputPath = generateDocx({
+      sourcePath,
+      templateName: body.templateName || undefined,
+      templatesDir,
+    });
 
     const deliverable: Deliverable = {
       id: crypto.randomUUID(),
@@ -133,6 +75,17 @@ export async function POST(req: Request) {
     writeStore(project.cwd, project.store);
     return NextResponse.json({ success: true, deliverable, task });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
+    const message = error instanceof Error ? error.message : String(error);
+    // Map generator validation errors to appropriate status codes.
+    if (message.includes("template not found")) {
+      return NextResponse.json({ error: message }, { status: 404 });
+    }
+    if (message.includes("invalid templateName") || message.includes("sourcePath must be")) {
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+    if (message.includes("pandoc")) {
+      return NextResponse.json({ error: message.slice(0, 300) }, { status: 500 });
+    }
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
