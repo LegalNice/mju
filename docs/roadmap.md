@@ -2,7 +2,7 @@
 
 > 本文档是 Mju Agents 的产品和技术规划，供人类开发者和 AI Agent 共同阅读。
 >
-> 当前状态：**第一、二阶段已完成；第三阶段工作流已完成（前后端均已接入）；IA 重构（进入页 → Board → Dates → 任务子页）已完成；第四阶段交付物/DOCX 已完成；第五阶段通用化与开源准备进行中（5.1/5.3 已完成，5.2/5.4 部分完成）。**
+> 当前状态：**第一、二阶段已完成；第三阶段工作流已完成（前后端均已接入）；IA 重构（进入页 → Board → Dates → 任务子页）已完成；第四阶段交付物/DOCX 已完成；第五阶段通用化与开源准备已完成（5.1/5.3/5.4 完成，5.2 核心配置外置完成，Obsidian 路径映射延后）；第六阶段材料自动化 MVP 已完成。**
 
 ## 目标
 
@@ -330,6 +330,27 @@ interface Deliverable {
 
 - 无 Obsidian 的空文件夹能初始化 Mju 并运行完整工作流（已通过 dev server + API 端到端验证）
 - 有 Obsidian 的 vault 能扫描案卷、同步任务、生成 DOCX
+
+---
+
+## 第六阶段：材料自动化 ✅ 已完成（MVP）
+
+### 6.1 后端
+
+- `POST /api/cases/[caseId]/materials`：接收 `multipart/form-data`，文件保存到案件 `材料/` 目录；支持 `error` / `overwrite` / `skip` 冲突策略
+- `POST /api/cases/[caseId]/materials/analyze`：基于文件名和扩展名自动分类，高置信度文件自动移入 `文书/` 或 `分析/`；从文件名提取日期并创建 `期限/` / `日程/`；创建 `大事记/` 记录和审阅任务
+- `lib/material-intelligence.ts`：规则引擎 + 日期提取 + 期限推断，不依赖 OCR/PDF 解析库
+
+### 6.2 前端
+
+- `CaseBoardView` 刊头增加「上传材料」按钮，选择文件后自动上传并分析
+- 分析完成后刷新任务列表，并在刊头下方显示处理摘要
+
+### 6.3 测试
+
+- `lib/material-intelligence.test.mjs`：分类、日期提取、期限推断
+- `app/api/cases/[caseId]/materials/route.test.mjs`：上传、冲突策略
+- `app/api/cases/[caseId]/materials/analyze/route.test.mjs`：自动归位、期限创建、任务创建
 
 ---
 

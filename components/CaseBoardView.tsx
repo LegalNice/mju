@@ -313,9 +313,12 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [caseQuery, setCaseQuery] = useState("");
   const [runningSessionIds, setRunningSessionIds] = useState<Set<string>>(new Set());
+  const [uploading, setUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const wfMenuRef = useRef<HTMLDivElement | null>(null);
   const taskMenuRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const loadCases = useCallback(async () => {
     const res = await fetch(`/api/cases?cwd=${encodeURIComponent(cwd)}`);
@@ -631,6 +634,43 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
     }
   }, [preview, starting, cwd, caseId, closePreview, loadTasks, loadWorkflows]);
 
+  const uploadMaterials = useCallback(
+    async (files: FileList | null) => {
+      if (!files || files.length === 0) return;
+      setUploading(true);
+      setUploadResult(null);
+      try {
+        const formData = new FormData();
+        for (const file of Array.from(files)) formData.append("files", file);
+        const uploadRes = await fetch(
+          `/api/cases/${caseId}/materials?cwd=${encodeURIComponent(cwd)}&conflict=overwrite`,
+          { method: "POST", body: formData },
+        );
+        if (!uploadRes.ok) throw new Error(`upload ${uploadRes.status}`);
+        const uploadData = (await uploadRes.json()) as { uploaded: string[] };
+        const analyzeRes = await fetch(
+          `/api/cases/${caseId}/materials/analyze?cwd=${encodeURIComponent(cwd)}`,
+          { method: "POST" },
+        );
+        if (!analyzeRes.ok) throw new Error(`analyze ${analyzeRes.status}`);
+        const analyzeData = (await analyzeRes.json()) as {
+          createdDeadlines: { deadline: { title: string } }[];
+          moved: { from: string; to: string }[];
+        };
+        setUploadResult(
+          `已上传 ${uploadData.uploaded.length} 份材料；自动归位 ${analyzeData.moved.length} 份，创建 ${analyzeData.createdDeadlines.length} 个期限和 1 个审阅任务。`,
+        );
+        await loadTasks();
+      } catch (err) {
+        setUploadResult(`上传失败：${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        setUploading(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
+    },
+    [caseId, cwd, loadTasks],
+  );
+
   const boardHref = `/board/${caseId}?cwd=${encodeURIComponent(cwd)}`;
   const today = todayString();
 
@@ -748,6 +788,16 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
           )}
         </div>
         <div style={{ display: "flex", alignItems: "baseline", gap: 16 }}>
+          <TextButton onClick={() => fileInputRef.current?.click()}>
+            {uploading ? "上传中…" : "上传材料"}
+          </TextButton>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            style={{ display: "none" }}
+            onChange={(e) => uploadMaterials(e.target.files)}
+          />
           {workflows && workflows.length > 0 && (
             <div ref={wfMenuRef} style={{ position: "relative" }}>
               <TextButton onClick={() => setWfMenuOpen((open) => !open)}>启动工作流 ▾</TextButton>
@@ -798,6 +848,18 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
           </span>
         </div>
       </div>
+
+      {uploadResult && (
+        <div
+          style={{
+            fontSize: 12,
+            color: uploadResult.startsWith("上传失败") ? "var(--accent)" : "var(--text-muted)",
+            marginBottom: 16,
+          }}
+        >
+          {uploadResult}
+        </div>
+      )}
 
       {/* 三列看板 */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}>

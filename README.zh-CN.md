@@ -67,7 +67,8 @@ mju --no-open                # 不自动打开浏览器
 
 ## 路线图与架构
 
-- **路线图**：[docs/roadmap.md](./docs/roadmap.md)——当前：通用化与开源准备（纯本地模式、配置外置、LegalNice 残留清理）。
+- **路线图**：[docs/roadmap.md](./docs/roadmap.md)——当前：材料自动化 MVP 已完成（上传 → 自动分类 → 生成期限/任务）。
+- **材料自动化**：在案件 Board 点击「上传材料」，系统会把文件收进 `材料/`，自动识别起诉状、判决书、合同等类型并归位，同时生成审阅任务和关键期限。
 - **架构**：[docs/architecture.md](./docs/architecture.md)。
 
 ## 开发
