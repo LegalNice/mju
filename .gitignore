@@ -24,7 +24,7 @@
 .DS_Store
 *.pem
 
-# machine-local LegalNice / agent-runtime state
+# machine-local Mju / agent-runtime state
 /.pi/*
 !/.pi/settings.json
 /config/local/

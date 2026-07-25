@@ -5,11 +5,12 @@ Mju Agents 使用内置的 Pi 运行时和 `pi-subagents` 负责运行时发现�
 ## 配置位置
 
 - 本机全局 Agent：`~/.pi/agent/agents/*.md`
-- 当前项目 Agent：`<项目目录>/.pi/agents/*.md`
+- 当前项目 Agent（默认）：`~/.mju/projects/<编码路径>/agents/*.md`
+- 兼容路径（低优先级）：`<项目目录>/.mju/agents/*.md`、`<项目目录>/.pi/agents/*.md`
 - 同名时，当前项目配置优先于全局配置。
 - 仓库中的 `.pi/settings.json` 只负责注册 `pi-subagents`，不保存 API key，也不保存个人 Agent 定义。
 
-界面可以选择全局或项目作用域。准备开源时，只有适合公开、且对贡献者有帮助的 Agent 才应放入项目的 `.pi/agents/`。
+界面可以选择全局或项目作用域。准备开源时，只有适合公开、且对贡献者有帮助的 Agent 才应放入仓库；项目特定的 Agent 应留在 `~/.mju/projects/<编码路径>/agents/`，避免把客户/案件信息带入仓库。
 
 ## 使用 Obsidian 工作区测试
 

@@ -1,3 +1,7 @@
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { readMjuConfig } from "./mju-config";
+import { mjuRootDir } from "./mju-paths";
 import type { Case, CaseType, DeliverableType, MjuStore, Task, TaskPriority, WorkflowRun } from "./mju-models";
 
 export type WorkflowId = "litigation-intake" | "contract-review" | "legal-research";
@@ -12,7 +16,7 @@ export interface WorkflowTaskTemplate {
 }
 
 export interface WorkflowDefinition {
-  id: WorkflowId;
+  id: string;
   name: string;
   description: string;
   caseTypes: CaseType[];
@@ -58,12 +62,74 @@ export const WORKFLOWS: WorkflowDefinition[] = [
   },
 ];
 
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((v) => typeof v === "string");
+}
+
+function isValidPriority(value: unknown): value is TaskPriority {
+  return value === "high" || value === "medium" || value === "low";
+}
+
+function isValidTaskTemplate(value: unknown): value is WorkflowTaskTemplate {
+  if (!value || typeof value !== "object") return false;
+  const t = value as Record<string, unknown>;
+  return (
+    typeof t.title === "string"
+    && typeof t.detail === "string"
+    && typeof t.assignee === "string"
+    && isValidPriority(t.priority)
+    && typeof t.deliverableType === "string"
+    && (t.deadlineOffsetDays === undefined || typeof t.deadlineOffsetDays === "number")
+  );
+}
+
+function isValidWorkflowDefinition(value: unknown): value is WorkflowDefinition {
+  if (!value || typeof value !== "object") return false;
+  const w = value as Record<string, unknown>;
+  return (
+    typeof w.id === "string"
+    && typeof w.name === "string"
+    && typeof w.description === "string"
+    && isStringArray(w.caseTypes)
+    && Array.isArray(w.tasks)
+    && w.tasks.every(isValidTaskTemplate)
+  );
+}
+
+function loadWorkflowOverrides(): WorkflowDefinition[] | null {
+  try {
+    const path = join(mjuRootDir(), "workflows.json");
+    if (!existsSync(path)) return null;
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
+    if (!Array.isArray(parsed)) return null;
+    if (!parsed.every(isValidWorkflowDefinition)) {
+      console.warn("[mju] ~/.mju/workflows.json failed validation; using built-in workflows");
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function resolveAgentName(assignee: string): string {
+  const agents = readMjuConfig().agents;
+  if (!agents) return assignee;
+  const lower = assignee.toLowerCase();
+  if (lower === "justice" && agents.justice) return agents.justice;
+  if (lower === "magician" && agents.magician) return agents.magician;
+  if (lower === "chariot" && agents.chariot) return agents.chariot;
+  return assignee;
+}
+
 export function listWorkflows(caseType?: CaseType): WorkflowDefinition[] {
-  return WORKFLOWS.filter((workflow) => !caseType || workflow.caseTypes.includes(caseType));
+  const source = loadWorkflowOverrides() ?? WORKFLOWS;
+  return source.filter((workflow) => !caseType || workflow.caseTypes.includes(caseType));
 }
 
 export function findWorkflow(workflowId: string): WorkflowDefinition | undefined {
-  return WORKFLOWS.find((workflow) => workflow.id === workflowId);
+  const source = loadWorkflowOverrides() ?? WORKFLOWS;
+  return source.find((workflow) => workflow.id === workflowId);
 }
 
 export function workflowAlreadyStarted(store: MjuStore, caseId: string, workflowId: string): boolean {
@@ -77,7 +143,7 @@ export function buildWorkflowTasks(caseItem: Case, workflow: WorkflowDefinition,
     caseId: caseItem.id,
     title: template.title,
     detail: template.detail,
-    assignee: template.assignee,
+    assignee: resolveAgentName(template.assignee),
     status: "待办",
     priority: template.priority,
     deadline: template.deadlineOffsetDays === undefined ? undefined : dateAfter(now, template.deadlineOffsetDays),

@@ -2,7 +2,9 @@
 
 [English](./README.md)
 
-面向法律从业者的本地优先 Agent 工作台。Mju 把案件文件夹（最好是 Obsidian 文件库）变成一组案件看板，把你输入的每一条指令变成一个背后挂着完整 AI 会话的任务。
+面向法律从业者的本地优先 Agent 工作台。Mju 把案件文件夹变成一组案件看板，把你输入的每一条指令变成一个背后挂着完整 AI 会话的任务。
+
+Obsidian 是推荐的文件层，但不是必需的——任何本地文件夹都能初始化 Mju，系统会自动生成标准案件结构和 Agent 工作指导。
 
 它不是法律意见服务，也不替代专业复核。所有会话文件、案件元数据和凭证都留在你自己的机器上。
 
@@ -34,7 +36,10 @@ npm install -g mju
 mju
 ```
 
-然后打开 [http://localhost:30142](http://localhost:30142)。首次使用，在进入页指向你的 Obsidian 文件库（或任意文件夹）即可——文件库会自动扫描案卷文件夹。
+然后打开 [http://localhost:30142](http://localhost:30142)。首次使用，在进入页指向任意文件夹即可：
+
+- 如果指向 Obsidian 文件库，Mju 会自动扫描 `ops/cases/案卷`、`ops/projects/活跃项目` 等目录；
+- 如果指向空文件夹，Mju 会自动生成标准项目结构、案件骨架、`AGENTS.md` 和内置 skills，直接上手。
 
 **参数：**
 
@@ -62,7 +67,7 @@ mju --no-open                # 不自动打开浏览器
 
 ## 路线图与架构
 
-- **路线图**：[docs/roadmap.md](./docs/roadmap.md)——下一步：任务改派、AI 归属识别、工作流启动器。
+- **路线图**：[docs/roadmap.md](./docs/roadmap.md)——当前：通用化与开源准备（纯本地模式、配置外置、LegalNice 残留清理）。
 - **架构**：[docs/architecture.md](./docs/architecture.md)。
 
 ## 开发

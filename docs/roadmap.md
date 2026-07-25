@@ -187,17 +187,16 @@ interface Deliverable {
   - GET：列出案件可用工作流及是否已启动
   - POST `{ caseId, workflowId, action: "preview" | "start" }`：预览或启动工作流；启动会写入任务和运行记录，并拒绝重复启动
 
-### 3.3 工作流 UI ⬜ 待接入
+### 3.3 工作流 UI ✅ 已完成
 
-- `components/WorkflowLauncher.tsx`（新）
-  - 在案件页面显示"启动工作流"按钮
-  - 选择工作流后预览将创建的任务列表
-  - 确认后批量创建任务
+- 案件 Board 刊头提供"启动工作流 ▾"入口
+- 预览模态展示任务清单 + assignee + 优先级 + 截止
+- 确认后批量创建任务；已启动置灰并给出 409 提示
 
 ### 验证
 
 - 后端测试覆盖预览不落库、诉讼工作流生成 5 项任务、运行记录持久化和重复启动冲突
-- 工作流启动器的前端接入待后续安排
+- 前端启动器已 CDP 端到端实测
 
 ---
 
@@ -294,38 +293,39 @@ interface Deliverable {
 
 ---
 
-## 第五阶段：通用化与开源准备 ⬜ 未开始
+## 第五阶段：通用化与开源准备 🟡 进行中
 
-### 5.1 纯本地模式
+### 5.1 纯本地模式 ✅ 基本就绪
 
 - 当目录不是 Obsidian vault 时，Mju 自动切换到纯本地模式
 - 案卷元数据存在 `~/.mju/projects/<编码路径>/store.json`，文件存在项目目录
-- 保证无 Obsidian 用户也能使用
+- 新建案件/收件箱时自动生成标准骨架（`任务/`、`期限/`、`日程/`、`材料/`、`分析/`、`文书/`、`工作包/`、`大事记/`）和案件主文件
+- 项目初始化时自动生成 `AGENTS.md` 指导与内置 skills，保证无 Obsidian 用户也能使用
+- **待最终验收**：无 Obsidian 空文件夹端到端跑通"初始化 → 新建案件 → 启动工作流"
 
-### 5.2 配置外置
+### 5.2 配置外置 🟡 部分完成
 
-- 把 LegalNice 特有的配置提取到 `~/.mju/config.json`：
-  - Obsidian 路径映射（`ops/cases/案卷` 等）
-  - Agent 命名（Justice/Magician/Chariot）
-  - 工作流模板
-  - DOCX 模板路径
-- 开源默认提供通用配置，用户可自定义
+- `~/.mju/config.json` 已支持 `classifyModel` 和 `agents.justice/magician/chariot` 显示名自定义
+- `~/.mju/workflows.json` 可覆盖内置工作流；非法时自动回退到内置三条
+- **延后**：Obsidian 路径映射、DOCX 模板路径外置（当前仍用标准 `ops/` 结构和 `templates/legal/`）
 
-### 5.3 清理与文档
+### 5.3 清理与文档 ✅
 
-- 全局搜索替换 `LegalNice`、`pi-web` 残留
-- 更新 `docs/subagents.zh-CN.md`：说明 `~/.mju/projects/<编码路径>/agents/` 是默认位置
-- 新增 `docs/architecture.md`：法律领域模型、Obsidian 桥接、纯本地模式三层关系
-- 更新 `README.zh-CN.md`：说明 Obsidian 为推荐存储，非必需
+- 全局搜索替换 `LegalNice`、`pi-web` 残留（剩余 `roadmap.md` 历史记录和 `.pi/` 路径中的运行时状态）
+- `docs/subagents.zh-CN.md` 已更新：说明 `~/.mju/projects/<编码路径>/agents/` 是默认位置，`.pi/agents` 仅为历史兼容
+- `docs/architecture.md` 已存在
+- `README.zh-CN.md` 已更新：说明 Obsidian 是推荐存储，非必需
 
-### 5.4 测试
+### 5.4 测试 ✅ 部分补齐
 
-- 新增测试：`lib/mju-models.test.mjs`、`lib/mju-store.test.mjs`、`lib/workflows.test.mjs`、`lib/docx-generator.test.mjs`
-- 跑通 `tsc --noEmit`、`npm run lint`
+- 新增 `lib/mju-guidance.test.mjs`：骨架目录幂等创建、主文件不覆盖、guidance 只写一次
+- 新增 `lib/workflows.test.mjs`：预览不落库、诉讼工作流生成 5 任务、重复启动冲突、workflows.json 覆盖/非法回退、Agent 显示名映射
+- 跑通 `tsc --noEmit`、`npm run lint`、全部 `lib/*.test.mjs`
+- **仍缺**：`lib/mju-models.test.mjs`、`lib/docx-generator.test.mjs`
 
 ### 验证
 
-- 无 Obsidian 的空文件夹能初始化 Mju 并运行完整工作流
+- 无 Obsidian 的空文件夹能初始化 Mju 并运行完整工作流（待最终 CDP 点验）
 - 有 Obsidian 的 vault 能扫描案卷、同步任务、生成 DOCX
 
 ---
