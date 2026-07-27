@@ -2,15 +2,17 @@ import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { createJiti } from "jiti";
 
 process.env.MJU_HOME = mkdtempSync(join(tmpdir(), "mju-home-"));
 
-const jiti = createJiti(import.meta.url, { alias: { "@": process.cwd() } });
-const { initStore, readStore } = await jiti.import("../../../../../../../lib/mju-store.ts");
-const casesRoute = await jiti.import("../../../../../cases/route.ts");
-const analyzeRoute = await jiti.import("./route.ts");
+const root = process.cwd();
+const jiti = createJiti(import.meta.url, { alias: { "@": root } });
+const { initStore, readStore } = await jiti.import(join(root, "lib/mju-store.ts"));
+const casesRoute = await jiti.import(join(root, "app/api/cases/route.ts"));
+const analyzeRoute = await jiti.import(fileURLToPath(new URL("./route.ts", import.meta.url)));
 
 function url(path, query = {}) {
   const params = new URLSearchParams(query);

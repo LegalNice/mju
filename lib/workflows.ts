@@ -41,7 +41,7 @@ export const WORKFLOWS: WorkflowDefinition[] = [
     id: "contract-review",
     name: "合同审查与修订",
     description: "为法律顾问项目建立收件、检索、风险意见与修订稿任务链。",
-    caseTypes: ["advisory"],
+    caseTypes: ["advisory", "project"],
     tasks: [
       { title: "核对合同文本与交易背景", detail: "确认版本、交易结构、主体、商业条款和客户关注事项。", assignee: "Chariot", priority: "high", deliverableType: "other", deadlineOffsetDays: 1 },
       { title: "检索适用规则与交易风险", detail: "围绕交易类型、监管要求和争议高发条款进行定向检索。", assignee: "Chariot", priority: "medium", deliverableType: "research-report", deadlineOffsetDays: 3 },
@@ -53,7 +53,7 @@ export const WORKFLOWS: WorkflowDefinition[] = [
     id: "legal-research",
     name: "专项法律检索",
     description: "用于独立法律问题的拆题、检索和内部报告交付。",
-    caseTypes: ["advisory", "litigation"],
+    caseTypes: ["advisory", "litigation", "project"],
     tasks: [
       { title: "明确问题与检索边界", detail: "拆分法律问题、事实前提、适用地域和待核验口径。", assignee: "Justice", priority: "high", deliverableType: "internal-opinion", deadlineOffsetDays: 1 },
       { title: "完成法规与案例检索", detail: "检索并整理可核验的法规、司法解释、案例和监管口径。", assignee: "Chariot", priority: "medium", deliverableType: "research-report", deadlineOffsetDays: 3 },

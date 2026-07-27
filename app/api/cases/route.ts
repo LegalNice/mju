@@ -18,6 +18,11 @@ function getCaseBaseDir(cwd: string, type: CaseType, isObsidian: boolean): strin
     : join(cwd, "ops", "projects", "活跃项目");
 }
 
+function parseCaseType(value: unknown): CaseType {
+  if (value === "advisory" || value === "litigation" || value === "project") return value;
+  return "advisory";
+}
+
 export async function GET(req: Request) {
   const cwd = new URL(req.url).searchParams.get("cwd");
   if (!cwd) return NextResponse.json({ error: "cwd required" }, { status: 400 });
@@ -48,7 +53,7 @@ export async function POST(req: Request) {
     if (!title) {
       return NextResponse.json({ error: "title required" }, { status: 400 });
     }
-    const type = body.type || "advisory";
+    const type = parseCaseType(body.type);
 
     const baseDir = getCaseBaseDir(cwd, type, Boolean(store.isObsidianVault));
     const caseDir = join(baseDir, title);

@@ -18,8 +18,9 @@ const MICRO: CSSProperties = {
 const COLUMNS: Array<Exclude<TaskStatus, "取消">> = ["待办", "进行中", "完成"];
 
 const CASE_TYPE_LABEL: Record<Case["type"], string> = {
-  litigation: "诉讼",
+  litigation: "争议解决",
   advisory: "顾问",
+  project: "专项",
 };
 
 const PRIORITY_LABEL: Record<TaskPriority, string> = {
@@ -315,10 +316,12 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
   const [runningSessionIds, setRunningSessionIds] = useState<Set<string>>(new Set());
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState<string | null>(null);
+  const [converting, setConverting] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const wfMenuRef = useRef<HTMLDivElement | null>(null);
   const taskMenuRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const convertInputRef = useRef<HTMLInputElement | null>(null);
 
   const loadCases = useCallback(async () => {
     const res = await fetch(`/api/cases?cwd=${encodeURIComponent(cwd)}`);
@@ -671,6 +674,48 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
     [caseId, cwd, loadTasks],
   );
 
+  const convertMaterials = useCallback(
+    async (files: FileList | null) => {
+      if (!files || files.length === 0) return;
+      setConverting(true);
+      setUploadResult(null);
+      try {
+        const formData = new FormData();
+        for (const file of Array.from(files)) formData.append("files", file);
+        const convertRes = await fetch(
+          `/api/cases/${caseId}/materials/convert?cwd=${encodeURIComponent(cwd)}`,
+          { method: "POST", body: formData },
+        );
+        const convertData = (await convertRes.json()) as {
+          saved?: string[];
+          errors?: Array<{ name: string; error: string }>;
+          analysis?: {
+            moved: { from: string; to: string }[];
+            createdDeadlines: { deadline: { title: string } }[];
+          } | null;
+          error?: string;
+        };
+        if (!convertRes.ok) {
+          throw new Error(convertData.error ?? `convert ${convertRes.status}`);
+        }
+        const saved = convertData.saved ?? [];
+        const errors = convertData.errors ?? [];
+        const movedCount = convertData.analysis?.moved.length ?? 0;
+        const deadlineCount = convertData.analysis?.createdDeadlines.length ?? 0;
+        setUploadResult(
+          `已转换 ${saved.length} 份为 Markdown${errors.length > 0 ? `，${errors.length} 份失败` : ""}；自动归位 ${movedCount} 份，创建 ${deadlineCount} 个期限。`,
+        );
+        await loadTasks();
+      } catch (err) {
+        setUploadResult(`转换失败：${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        setConverting(false);
+        if (convertInputRef.current) convertInputRef.current.value = "";
+      }
+    },
+    [caseId, cwd, loadTasks],
+  );
+
   const boardHref = `/board/${caseId}?cwd=${encodeURIComponent(cwd)}`;
   const today = todayString();
 
@@ -797,6 +842,17 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
             multiple
             style={{ display: "none" }}
             onChange={(e) => uploadMaterials(e.target.files)}
+          />
+          <TextButton onClick={() => convertInputRef.current?.click()}>
+            {converting ? "转换中…" : "PDF/DOCX 转 Markdown"}
+          </TextButton>
+          <input
+            ref={convertInputRef}
+            type="file"
+            multiple
+            accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+            style={{ display: "none" }}
+            onChange={(e) => convertMaterials(e.target.files)}
           />
           {workflows && workflows.length > 0 && (
             <div ref={wfMenuRef} style={{ position: "relative" }}>

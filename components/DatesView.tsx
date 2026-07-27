@@ -23,8 +23,9 @@ const VAULT_MARK: CSSProperties = {
 };
 
 const CASE_TYPE_LABEL: Record<Case["type"], string> = {
-  litigation: "诉讼",
+  litigation: "争议解决",
   advisory: "顾问",
+  project: "专项",
 };
 
 type ViewMode = "list" | "week" | "month";

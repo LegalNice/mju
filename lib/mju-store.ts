@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { createEmptyStore, touchStore, type Case, type MjuStore } from "./mju-models";
+import { createEmptyStore, touchStore, type Case, type CaseType, type MjuStore } from "./mju-models";
 import { ensureCaseSkeleton } from "./mju-guidance";
 import { mjuProjectDir, mjuRootDir } from "./mju-paths";
 
@@ -132,7 +132,7 @@ function normalizeStore(store: MjuStore): MjuStore {
   };
 }
 
-export function initStore(cwd: string, projectName: string, projectType?: "advisory" | "litigation"): MjuStore {
+export function initStore(cwd: string, projectName: string, projectType?: CaseType): MjuStore {
   const existing = readStore(cwd);
   if (existing) return existing;
   const store = createEmptyStore(projectName);

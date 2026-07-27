@@ -32,7 +32,7 @@ export const CASE_SKELETON_DIRS = ["任务", "期限", "日程", "材料", "分�
 export function ensureCaseSkeleton(
   caseDir: string,
   caseTitle: string,
-  caseType?: "advisory" | "litigation",
+  caseType?: "advisory" | "litigation" | "project",
 ): { dirs: string[]; masterFileWritten: boolean } {
   const dirs: string[] = [];
   for (const dir of CASE_SKELETON_DIRS) {
@@ -48,7 +48,11 @@ export function ensureCaseSkeleton(
   let masterFileWritten = false;
   if (!existsSync(masterPath)) {
     const now = new Date().toISOString();
-    const typeLabel = caseType === "litigation" ? "争议解决" : "法律顾问";
+    const typeLabel = caseType === "litigation"
+      ? "争议解决"
+      : caseType === "project"
+      ? "专项"
+      : "法律顾问";
     writeFileSync(
       masterPath,
       `---

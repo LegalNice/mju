@@ -287,3 +287,39 @@ test("reads and writes the classify model in the global mju config", async () =>
   assert.equal(reset.status, 200);
   assert.equal((await call(mjuConfigRoute.GET, "/api/mju-config")).body.classifyModel, null);
 });
+
+test("reads and writes MinerU config in the global mju config", async () => {
+  await call(mjuConfigRoute.PUT, "/api/mju-config", {
+    method: "PUT", body: { mineru: null },
+  });
+  const initial = await call(mjuConfigRoute.GET, "/api/mju-config");
+  assert.equal(initial.status, 200);
+  assert.equal(initial.body.mineru, null);
+
+  const invalid = await call(mjuConfigRoute.PUT, "/api/mju-config", {
+    method: "PUT", body: { mineru: { apiToken: 123 } },
+  });
+  assert.equal(invalid.status, 400);
+
+  const set = await call(mjuConfigRoute.PUT, "/api/mju-config", {
+    method: "PUT", body: {
+      mineru: {
+        apiToken: "sk-test",
+        modelVersion: "vlm",
+        enableOcr: true,
+        enableTable: true,
+        enableFormula: false,
+      },
+    },
+  });
+  assert.equal(set.status, 200);
+  const got = (await call(mjuConfigRoute.GET, "/api/mju-config")).body.mineru;
+  assert.equal(got.apiToken, "sk-test");
+  assert.equal(got.modelVersion, "vlm");
+  assert.equal(got.enableOcr, true);
+  assert.equal(got.enableFormula, false);
+
+  await call(mjuConfigRoute.PUT, "/api/mju-config", {
+    method: "PUT", body: { mineru: null },
+  });
+});

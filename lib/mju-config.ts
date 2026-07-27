@@ -20,6 +20,19 @@ export interface MjuDocxConfig {
   templatesDir?: string;
 }
 
+export interface MjuMineruConfig {
+  /** MinerU Precision Extract API token (from https://mineru.net/apiManage). */
+  apiToken?: string;
+  /** Model version for extraction. Default: vlm. */
+  modelVersion?: "pipeline" | "vlm" | "MinerU-HTML";
+  /** Enable OCR for scanned documents. Default: false. */
+  enableOcr?: boolean;
+  /** Enable table recognition. Default: true. */
+  enableTable?: boolean;
+  /** Enable formula recognition. Default: true. */
+  enableFormula?: boolean;
+}
+
 export interface MjuConfig {
   /** "provider/id" model ref used for entry-page case classification. */
   classifyModel?: string;
@@ -27,6 +40,8 @@ export interface MjuConfig {
   agents?: MjuAgentNames;
   /** DOCX generation options. */
   docx?: MjuDocxConfig;
+  /** MinerU document-to-Markdown conversion options. */
+  mineru?: MjuMineruConfig;
 }
 
 function configPath(): string {
@@ -50,6 +65,19 @@ function isValidDocxConfig(value: unknown): value is MjuDocxConfig {
   return true;
 }
 
+const MINERU_MODEL_VERSIONS = ["pipeline", "vlm", "MinerU-HTML"] as const;
+
+function isValidMineruConfig(value: unknown): value is MjuMineruConfig {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const cfg = value as Record<string, unknown>;
+  if (cfg.apiToken !== undefined && typeof cfg.apiToken !== "string") return false;
+  if (cfg.modelVersion !== undefined && !MINERU_MODEL_VERSIONS.includes(cfg.modelVersion as typeof MINERU_MODEL_VERSIONS[number])) return false;
+  if (cfg.enableOcr !== undefined && typeof cfg.enableOcr !== "boolean") return false;
+  if (cfg.enableTable !== undefined && typeof cfg.enableTable !== "boolean") return false;
+  if (cfg.enableFormula !== undefined && typeof cfg.enableFormula !== "boolean") return false;
+  return true;
+}
+
 /** Parse a "provider/id" model ref; returns null for malformed values. */
 export function parseModelRef(ref: string): { provider: string; id: string } | null {
   const [provider, ...rest] = ref.split("/");
@@ -68,6 +96,7 @@ export function readMjuConfig(): MjuConfig {
     if (typeof config.classifyModel === "string") result.classifyModel = config.classifyModel;
     if (isValidAgentNames(config.agents)) result.agents = config.agents;
     if (isValidDocxConfig(config.docx)) result.docx = config.docx;
+    if (isValidMineruConfig(config.mineru)) result.mineru = config.mineru;
     return result;
   } catch {
     return {};
