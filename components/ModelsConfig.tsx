@@ -1558,13 +1558,20 @@ export function ModelsConfig({ onClose, onModelsChanged }: { onClose: () => void
       });
       const d = await res.json() as { success?: boolean; error?: string };
       if (!res.ok || d.error) setSaveError(d.error ?? `HTTP ${res.status}`);
-      else { setSavedOk(true); setTimeout(() => setSavedOk(false), 2000); }
+      else {
+        setSavedOk(true);
+        window.dispatchEvent(new Event("pi-models-changed"));
+        onModelsChanged?.();
+        // Let the ✓ animation read as confirmation, then close — saving is
+        // the final step of the add/edit flow, no extra close click needed.
+        setTimeout(() => onClose(), 650);
+      }
     } catch (e) {
       setSaveError(String(e));
     } finally {
       setSaving(false);
     }
-  }, [config]);
+  }, [config, onClose, onModelsChanged]);
 
   const handleAccountCreated = useCallback(async (providerName: string) => {
     const res = await fetch("/api/models-config");

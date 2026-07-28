@@ -478,6 +478,38 @@ export function EntryPage() {
     };
   }, []);
 
+  // Refreshable model list loader — re-run after the models config modal
+  // changes providers/models so the composer picker stays in sync without a
+  // full page reload.
+  const loadModels = useCallback(() => {
+    if (!project) return;
+    fetch(`/api/models?cwd=${encodeURIComponent(project.cwd)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: {
+        defaultModel?: ModelSelection | null;
+        modelList?: ModelEntry[];
+      } | null) => {
+        if (!data) return;
+        const list = data.modelList ?? [];
+        setModelList(list);
+        let selection = data.defaultModel ?? null;
+        // Prefer the persisted pick when that model is still available.
+        try {
+          const stored = JSON.parse(localStorage.getItem(LS_MODEL) ?? "null") as ModelSelection | null;
+          if (stored && list.some((m) => m.provider === stored.provider && m.id === stored.modelId)) {
+            selection = stored;
+          }
+        } catch { /* malformed cache — fall back to the default */ }
+        // Fresh installs have no settings default — preselect the first
+        // available model so the first launch does not fail on "no model".
+        if (!selection && list.length > 0) {
+          selection = { provider: list[0].provider, modelId: list[0].id };
+        }
+        setSelectedModel(selection);
+      })
+      .catch(() => {});
+  }, [project]);
+
   // Persist the selection and load cases + default model for the project.
   useEffect(() => {
     if (!project) return;
@@ -518,35 +550,11 @@ export function EntryPage() {
         setCases([]);
         setAgenda([]);
       });
-    fetch(`/api/models?cwd=${encodeURIComponent(project.cwd)}`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: {
-        defaultModel?: ModelSelection | null;
-        modelList?: ModelEntry[];
-      } | null) => {
-        if (cancelled || !data) return;
-        const list = data.modelList ?? [];
-        setModelList(list);
-        let selection = data.defaultModel ?? null;
-        // Prefer the persisted pick when that model is still available.
-        try {
-          const stored = JSON.parse(localStorage.getItem(LS_MODEL) ?? "null") as ModelSelection | null;
-          if (stored && list.some((m) => m.provider === stored.provider && m.id === stored.modelId)) {
-            selection = stored;
-          }
-        } catch { /* malformed cache — fall back to the default */ }
-        // Fresh installs have no settings default — preselect the first
-        // available model so the first launch does not fail on "no model".
-        if (!selection && list.length > 0) {
-          selection = { provider: list[0].provider, modelId: list[0].id };
-        }
-        setSelectedModel(selection);
-      })
-      .catch(() => {});
+    loadModels();
     return () => {
       cancelled = true;
     };
-  }, [project]);
+  }, [project, loadModels]);
 
   // Close the case dropdown on outside click.
   useEffect(() => {
@@ -1848,7 +1856,12 @@ export function EntryPage() {
         )}
       </div>
 
-      {activeConfig === "models" && <ModelsConfig onClose={() => setActiveConfig(null)} />}
+      {activeConfig === "models" && (
+        <ModelsConfig
+          onClose={() => { setActiveConfig(null); loadModels(); }}
+          onModelsChanged={loadModels}
+        />
+      )}
       {activeConfig === "skills" && project && (
         <SkillsConfig cwd={project.cwd} onClose={() => setActiveConfig(null)} />
       )}
