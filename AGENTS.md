@@ -1,4 +1,4 @@
-# Pi Agent Web - Development Notes
+# Mju Agents - Development Notes
 
 ## Quick Start
 
