@@ -206,6 +206,9 @@ Tool names are passed at session creation (`POST /api/agent/new` → `toolNames[
 ### Mju metadata lives outside the workspace
 Project agent configs are stored in `~/.mju/projects/<encoded-cwd>/agents/` (see `lib/mju-paths.ts`), never inside the Obsidian vault. `rpc-manager.ts` registers that dir through `PI_SUBAGENT_EXTRA_AGENT_DIRS` so pi-subagents discovers them as user-scope agents. Legacy `<cwd>/.mju/agents` and `<cwd>/.pi/agents` are still read (lower precedence) and cleaned on DELETE.
 
+### Bundled default agents (`defaults/agents/`)
+`defaults/agents/` ships the built-in legal team (`justice` 法律分析 / `magician` 文书起草 / `chariot` 执行检索) inside the npm package. `registerBundledAgentsDir()` in `lib/rpc-manager.ts` adds it to `PI_SUBAGENT_EXTRA_AGENT_DIRS`, so pi-subagents loads them as user-scope agents at the **lowest** precedence — a user's own `~/.pi/agent/agents` or project agents with the same name override the bundled copy. Bundled agents carry no `model:` pin so they run on whatever default model the user configured; user-level copies may pin models. `process.cwd()` is the package root both in dev and via `bin/mju.js` (`next start` spawns with `cwd: pkgDir`).
+
 ### Auto subagent delegation
 `lib/mju-orchestration.ts` holds the system-prompt section appended via `resourceLoaderOptions.appendSystemPrompt` (only when pi-subagents resolves). It tells the main agent to `subagent` list-then-delegate on substantial work without the user naming an agent. This is prompt-level routing, not a hard router — if a model still does everything itself, strengthen this text rather than adding code.
 

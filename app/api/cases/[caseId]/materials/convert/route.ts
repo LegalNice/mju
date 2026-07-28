@@ -60,6 +60,15 @@ async function fetchJson(url: string, options?: RequestInit): Promise<unknown> {
       : `HTTP ${res.status}`;
     throw new Error(msg);
   }
+  // MinerU v4 wraps every response in { code, msg, data }. Unwrap the payload
+  // and surface API-level errors that still arrive with HTTP 200.
+  if (parsed && typeof parsed === "object" && "code" in parsed) {
+    const envelope = parsed as { code: unknown; msg?: unknown; data?: unknown };
+    if (typeof envelope.code === "number" && envelope.code !== 0) {
+      throw new Error(typeof envelope.msg === "string" ? envelope.msg : `MinerU error code ${envelope.code}`);
+    }
+    return envelope.data ?? {};
+  }
   return parsed;
 }
 
