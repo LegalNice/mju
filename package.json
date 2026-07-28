@@ -1,6 +1,6 @@
 {
   "name": "@tttangerine/mju",
-  "version": "1.7.1",
+  "version": "1.7.2",
   "description": "Mju Agents: your tough but fair legal assistant, with a bundled Pi runtime and subagents",
   "license": "MIT",
   "engines": {
@@ -36,7 +36,6 @@
     "@earendil-works/pi-ai": "^0.80.10",
     "@earendil-works/pi-coding-agent": "^0.80.10",
     "@earendil-works/pi-tui": "^0.80.10",
-    "@lobehub/icons": "^5.6.0",
     "@types/react-syntax-highlighter": "^15.5.13",
     "adm-zip": "^0.6.0",
     "katex": "^0.16.47",
