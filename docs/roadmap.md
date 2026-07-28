@@ -343,7 +343,7 @@ interface Deliverable {
 
 ### 6.2 前端
 
-- `CaseBoardView` 刊头增加「上传材料」按钮，选择文件后自动上传并分析
+- `CaseBoardView` 刊头提供「导入材料」入口，选择本地文件后自动归档分析；PDF/DOCX 等文件自动转为 Markdown
 - 分析完成后刷新任务列表，并在刊头下方显示处理摘要
 
 ### 6.3 测试
