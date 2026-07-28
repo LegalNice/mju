@@ -17,7 +17,7 @@ export interface ProjectSummary {
 
 /**
  * Filesystem-guided decode of an encoded project id ("-Users-foo-bar-").
- * Hyphens inside real directory names (e.g. "LegalNice-Obsidian-Vault") are
+ * Hyphens inside real directory names (e.g. "My-Obsidian-Vault") are
  * handled by backtracking: try the longest segment that exists on disk first.
  * Only a fallback — stores written by current versions carry `cwd` directly.
  */

@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { createEmptyStore, touchStore, type Case, type MjuStore } from "./mju-models";
+import { createEmptyStore, touchStore, type Case, type CaseType, type MjuStore } from "./mju-models";
+import { ensureCaseSkeleton } from "./mju-guidance";
 import { mjuProjectDir, mjuRootDir } from "./mju-paths";
 
 const STORE_FILE = "store.json";
@@ -93,6 +94,7 @@ export function ensureInboxCase(cwd: string, store: MjuStore): Case {
   if (existing) return existing;
   const vaultPath = store.isObsidianVault ? join(cwd, "ops", "inbox") : join(cwd, "inbox");
   mkdirSync(vaultPath, { recursive: true });
+  ensureCaseSkeleton(vaultPath, INBOX_CASE_TITLE, "advisory");
   const inbox: Case = {
     id: crypto.randomUUID(),
     title: INBOX_CASE_TITLE,
@@ -130,7 +132,7 @@ function normalizeStore(store: MjuStore): MjuStore {
   };
 }
 
-export function initStore(cwd: string, projectName: string, projectType?: "advisory" | "litigation"): MjuStore {
+export function initStore(cwd: string, projectName: string, projectType?: CaseType): MjuStore {
   const existing = readStore(cwd);
   if (existing) return existing;
   const store = createEmptyStore(projectName);

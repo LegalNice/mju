@@ -33,7 +33,7 @@ export async function DELETE(
       }
     }
     // Environment credentials cannot be deleted from the parent process. Keep
-    // a LegalNice-level tombstone so the provider stays hidden until re-added.
+    // a project-level tombstone so the provider stays hidden until re-added.
     setProviderDeleted(provider, true);
     invalidateModelsCache();
     return Response.json({ success: true });

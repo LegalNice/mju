@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { Case as MjuCase, Deadline, Schedule, Task } from "@/lib/mju-models";
+import type { Case as MjuCase, CaseType, Deadline, Schedule, Task } from "@/lib/mju-models";
 import { ModelsConfig } from "@/components/ModelsConfig";
 import { SkillsConfig } from "@/components/SkillsConfig";
 import { SubagentsConfig } from "@/components/SubagentsConfig";
 import { PluginsConfig } from "@/components/PluginsConfig";
 import { ThemeConfig } from "@/components/ThemeConfig";
+import { MineruConfig } from "@/components/MineruConfig";
 import { Wordmark } from "@/components/Wordmark";
 
 const LS_CWD = "mju-entry-cwd";
@@ -16,7 +17,7 @@ const LS_LAST_CASE = "mju-last-case";
 const LS_MODEL = "mju-entry-model";
 const INBOX_TITLE = "通用任务";
 
-type ConfigPanel = "models" | "skills" | "agents" | "plugins" | "theme";
+type ConfigPanel = "models" | "skills" | "agents" | "plugins" | "theme" | "mineru";
 
 interface ProjectSummary {
   cwd: string;
@@ -415,8 +416,9 @@ export function EntryPage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [caseQuery, setCaseQuery] = useState("");
   const [caseCreateOpen, setCaseCreateOpen] = useState(false);
+  const [inlineCreateOpen, setInlineCreateOpen] = useState(false);
   const [newCaseTitle, setNewCaseTitle] = useState("");
-  const [newCaseType, setNewCaseType] = useState<"litigation" | "advisory">("litigation");
+  const [newCaseType, setNewCaseType] = useState<CaseType>("litigation");
   const [caseCreating, setCaseCreating] = useState(false);
   const [caseCreateError, setCaseCreateError] = useState<string | null>(null);
   const [modelList, setModelList] = useState<ModelEntry[]>([]);
@@ -670,6 +672,7 @@ export function EntryPage() {
       setAiDetected(null);
       setAiDeadline(null);
       setMenuOpen(false);
+      setInlineCreateOpen(false);
       if (detectTimer.current) clearTimeout(detectTimer.current);
       return;
     }
@@ -704,6 +707,7 @@ export function EntryPage() {
     setMenuOpen(false);
     setCaseQuery("");
     setCaseCreateOpen(false);
+    setInlineCreateOpen(false);
   };
 
   /** Inline "new case" form submit — creates the case, then pins the chip to it. */
@@ -722,6 +726,7 @@ export function EntryPage() {
       const created = data.case as MjuCase;
       setCases((prev) => [...prev, created]);
       setNewCaseTitle("");
+      setInlineCreateOpen(false);
       selectPin({ kind: "case", value: created });
     } catch (err) {
       setCaseCreateError(err instanceof Error ? err.message : String(err));
@@ -735,7 +740,8 @@ export function EntryPage() {
     : detected ? detected.title
     : aiDetected ? aiDetected.title
     : INBOX_TITLE;
-  const showClassifying = !pinned && !detected && !aiDetected && classifying;
+  const noCaseMatch = !pinned && !detected && !aiDetected;
+  const showClassifying = noCaseMatch && classifying;
   const showChip = Boolean(text.trim());
   /** Case dropdown rows after applying the search box filter (inbox is appended separately) */
   const caseQueryLower = caseQuery.trim().toLowerCase();
@@ -752,6 +758,7 @@ export function EntryPage() {
     { id: "skills", label: "SKILLS", needsProject: true },
     { id: "agents", label: "AGENTS" },
     { id: "plugins", label: "PLUGINS", needsProject: true },
+    { id: "mineru", label: "MINERU" },
     { id: "theme", label: "THEME" },
   ];
 
@@ -958,23 +965,45 @@ export function EntryPage() {
               }}
             >
               <span style={{ ...micro, color: "var(--text-dim)" }}>项目</span>
-              <button
-                type="button"
-                className="mju-entry-proj"
-                onClick={() => setProjMenuOpen((v) => !v)}
-                style={{
-                  border: "none",
-                  background: "transparent",
-                  padding: 0,
-                  font: "inherit",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: "var(--text-muted)",
-                  cursor: "pointer",
-                }}
-              >
-                {project.name} ▾
-              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                <button
+                  type="button"
+                  className="mju-entry-plus"
+                  onClick={() => {
+                    setInlineCreateOpen(true);
+                    setCaseCreateError(null);
+                  }}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    padding: 0,
+                    font: "inherit",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: "var(--accent)",
+                    cursor: "pointer",
+                  }}
+                >
+                  + 新建案件
+                </button>
+                <button
+                  type="button"
+                  className="mju-entry-proj"
+                  onClick={() => setProjMenuOpen((v) => !v)}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    padding: 0,
+                    font: "inherit",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: "var(--text-muted)",
+                    cursor: "pointer",
+                  }}
+                >
+                  {project.name} ▾
+                </button>
+              </div>
               {projMenuOpen && (
                 <div
                   style={{
@@ -1249,6 +1278,42 @@ export function EntryPage() {
             >
               {showClassifying ? (
                 <span style={{ color: "var(--text-dim)" }}>识别中…</span>
+              ) : noCaseMatch ? (
+                <>
+                  <span>未识别到现有案件</span>
+                  <span
+                    className="mju-entry-change"
+                    onClick={() => {
+                      setInlineCreateOpen(true);
+                      setCaseCreateError(null);
+                    }}
+                    style={{
+                      color: "var(--accent)",
+                      cursor: "pointer",
+                      textDecoration: "underline",
+                      textUnderlineOffset: 3,
+                    }}
+                  >
+                    新建案件
+                  </span>
+                  <span
+                    className="mju-entry-change"
+                    onClick={() => {
+                      setMenuOpen((v) => !v);
+                      setCaseQuery("");
+                      setCaseCreateOpen(false);
+                      setInlineCreateOpen(false);
+                    }}
+                    style={{
+                      color: "var(--text-dim)",
+                      cursor: "pointer",
+                      textDecoration: "underline",
+                      textUnderlineOffset: 3,
+                    }}
+                  >
+                    更改
+                  </span>
+                </>
               ) : (
                 <>
                   <span>识别为</span>
@@ -1271,6 +1336,7 @@ export function EntryPage() {
                       setMenuOpen((v) => !v);
                       setCaseQuery("");
                       setCaseCreateOpen(false);
+                      setInlineCreateOpen(false);
                     }}
                     style={{
                       color: "var(--text-dim)",
@@ -1328,9 +1394,10 @@ export function EntryPage() {
                           outline: "none",
                         }}
                       />
-                      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                        {(["litigation", "advisory"] as const).map((t) => {
+                      <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                        {(["litigation", "advisory", "project"] as const).map((t) => {
                           const active = newCaseType === t;
+                          const label = t === "litigation" ? "争议解决" : t === "advisory" ? "顾问" : "专项";
                           return (
                             <button
                               key={t}
@@ -1346,7 +1413,7 @@ export function EntryPage() {
                                 cursor: "pointer",
                               }}
                             >
-                              {t === "litigation" ? "诉讼" : "顾问"}
+                              {label}
                             </button>
                           );
                         })}
@@ -1483,6 +1550,114 @@ export function EntryPage() {
                 </div>
               )}
             </div>
+
+            {inlineCreateOpen && (
+              <div
+                style={{
+                  marginTop: 12,
+                  marginLeft: "auto",
+                  marginRight: "auto",
+                  width: "min(360px, 92vw)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 2,
+                  padding: 12,
+                  background: "var(--bg-panel)",
+                }}
+              >
+                <input
+                  autoFocus
+                  value={newCaseTitle}
+                  onChange={(e) => {
+                    setNewCaseTitle(e.target.value);
+                    setCaseCreateError(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                      e.preventDefault();
+                      void createCase();
+                    }
+                  }}
+                  placeholder="案件名称，如 某某公司 vs 某某"
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    border: "1px solid var(--border)",
+                    borderRadius: 2,
+                    padding: "8px 10px",
+                    font: "inherit",
+                    fontSize: 12,
+                    background: "transparent",
+                    color: "var(--text)",
+                    outline: "none",
+                  }}
+                />
+                <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+                  {(["litigation", "advisory", "project"] as const).map((t) => {
+                    const active = newCaseType === t;
+                    const label = t === "litigation" ? "争议解决" : t === "advisory" ? "顾问" : "专项";
+                    return (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setNewCaseType(t)}
+                        style={{
+                          ...micro,
+                          border: active ? "1px solid var(--accent)" : "1px solid var(--border)",
+                          borderRadius: 2,
+                          background: "transparent",
+                          color: active ? "var(--accent)" : "var(--text-muted)",
+                          padding: "5px 10px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {caseCreateError && (
+                  <div style={{ marginTop: 10, fontSize: 12, color: "var(--accent)" }}>{caseCreateError}</div>
+                )}
+                <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center" }}>
+                  <button
+                    type="button"
+                    className="mju-entry-create"
+                    onClick={() => void createCase()}
+                    disabled={caseCreating || !newCaseTitle.trim()}
+                    style={{
+                      ...micro,
+                      border: "none",
+                      borderRadius: 2,
+                      background: "var(--accent)",
+                      color: "#fff",
+                      padding: "6px 14px",
+                      cursor: caseCreating || !newCaseTitle.trim() ? "default" : "pointer",
+                      opacity: caseCreating || !newCaseTitle.trim() ? 0.4 : 1,
+                    }}
+                  >
+                    {caseCreating ? "…" : "创建并关联"}
+                  </button>
+                  <button
+                    type="button"
+                    className="mju-entry-change"
+                    onClick={() => {
+                      setInlineCreateOpen(false);
+                      setCaseCreateError(null);
+                    }}
+                    style={{
+                      ...micro,
+                      border: "none",
+                      background: "transparent",
+                      padding: 0,
+                      color: "var(--text-muted)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    取消
+                  </button>
+                </div>
+              </div>
+            )}
 
             {!activeConfig && (
               <div
@@ -1677,6 +1852,7 @@ export function EntryPage() {
         <PluginsConfig cwd={project.cwd} sessionId={null} onClose={() => setActiveConfig(null)} />
       )}
       {activeConfig === "theme" && <ThemeConfig onClose={() => setActiveConfig(null)} />}
+      {activeConfig === "mineru" && <MineruConfig onClose={() => setActiveConfig(null)} />}
     </div>
   );
 }

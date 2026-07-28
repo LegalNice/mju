@@ -2,19 +2,25 @@ import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { NextResponse } from "next/server";
 import { readStore, writeStore, ensureInboxCase } from "@/lib/mju-store";
-import { hasCanonicalStructure } from "@/lib/mju-guidance";
+import { ensureCanonicalStructure, ensureCaseSkeleton, hasCanonicalStructure } from "@/lib/mju-guidance";
 import type { Case, CaseType } from "@/lib/mju-models";
 
 export const runtime = "nodejs";
 
 function getCaseBaseDir(cwd: string, type: CaseType, isObsidian: boolean): string {
   // Canonical ops/ layout applies to Obsidian vaults and plain folders alike.
-  if (isObsidian || hasCanonicalStructure(cwd)) {
-    return type === "litigation"
-      ? join(cwd, "ops", "cases", "案卷")
-      : join(cwd, "ops", "projects", "活跃项目");
+  // For plain folders that do not have it yet, create it on demand.
+  if (!isObsidian && !hasCanonicalStructure(cwd)) {
+    ensureCanonicalStructure(cwd);
   }
-  return join(cwd, "cases");
+  return type === "litigation"
+    ? join(cwd, "ops", "cases", "案卷")
+    : join(cwd, "ops", "projects", "活跃项目");
+}
+
+function parseCaseType(value: unknown): CaseType {
+  if (value === "advisory" || value === "litigation" || value === "project") return value;
+  return "advisory";
 }
 
 export async function GET(req: Request) {
@@ -47,11 +53,12 @@ export async function POST(req: Request) {
     if (!title) {
       return NextResponse.json({ error: "title required" }, { status: 400 });
     }
-    const type = body.type || "advisory";
+    const type = parseCaseType(body.type);
 
     const baseDir = getCaseBaseDir(cwd, type, Boolean(store.isObsidianVault));
     const caseDir = join(baseDir, title);
     mkdirSync(caseDir, { recursive: true });
+    ensureCaseSkeleton(caseDir, title, type);
 
     const now = new Date().toISOString();
     const newCase: Case = {

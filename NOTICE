@@ -1,0 +1,20 @@
+Mju Agents
+==========
+
+This project is derived from pi-web (https://github.com/agegr/pi-web),
+Copyright (c) 2026 agegr, licensed under the MIT License.
+Subsequent modifications and additions are Copyright (c) 2026 TTTangerineAir,
+also under the MIT License (see LICENSE).
+
+Mju bundles the following runtime packages, each distributed under the
+MIT License by their respective authors (see package-lock.json for the
+exact versions in use):
+
+- @earendil-works/pi-coding-agent — Copyright (c) Mario Zechner
+- @earendil-works/pi-ai          — Copyright (c) Mario Zechner
+- @earendil-works/pi-tui         — Copyright (c) Mario Zechner
+- pi-subagents                   — Copyright (c) Nico Bailon
+
+All other third-party dependencies are listed in package.json and
+package-lock.json and remain the property of their respective authors
+under their own licenses.

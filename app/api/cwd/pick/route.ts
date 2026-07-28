@@ -17,7 +17,7 @@ export async function POST() {
   try {
     const { stdout } = await execFileAsync("osascript", [
       "-e",
-      'POSIX path of (choose folder with prompt "选择 LegalNice 工作区")',
+      'POSIX path of (choose folder with prompt "选择 Mju 工作区")',
     ], { timeout: 120_000, maxBuffer: 1024 * 1024 });
     const cwd = stdout.trim();
     return cwd ? NextResponse.json({ cwd }) : NextResponse.json({ cancelled: true });

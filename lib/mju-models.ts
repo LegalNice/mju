@@ -11,7 +11,7 @@ export interface Client {
   createdAt: string;
 }
 
-export type CaseType = "advisory" | "litigation";
+export type CaseType = "advisory" | "litigation" | "project";
 export type CaseStatus = "active" | "dormant" | "closed";
 
 export interface Case {

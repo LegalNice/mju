@@ -1,31 +1,34 @@
 ---
 name: case-workflow
-description: "Handle LegalNice mainland-China case work from intake through closeout. Use for existing or new cases, case tasks, schedules, deadlines, filing materials, case analysis, strategy decisions, hearing outlines, evidence organization, or any request that must be recorded in a case workspace."
+description: "Handle mainland-China legal case work from intake through closeout. Use for existing or new cases, case tasks, schedules, deadlines, filing materials, case analysis, strategy decisions, hearing outlines, evidence organization, or any request that must be recorded in a case workspace."
 ---
 
 # 案卷工作流
 
-本 skill 只负责入口识别和收尾；法律实体判断仍先按 `litigation-legal` 或对应领域插件执行。识别后必须加载对应专项 skill，不用本 skill 替代专项能力。
+本 skill 只负责入口识别和收尾；法律实体判断仍先按用户请求的实际领域执行。识别后必须加载对应专项 skill（如果项目配置了），不用本 skill 替代专项能力。
 
 ## 先判定入口
 
-1. 先在 `ops/cases/案卷/`、`ops/cases/休眠案卷/`、`ops/cases/归档案卷/` 搜索当事人、案由和文件名，确认是既有案卷还是新案卷。
-2. 既有案卷不得另建平行目录；先读案件主文件，再按 [案卷当下状态治理](../case-file-conventions/references/context-governance.md) 的顺序读取。
-3. 只有确认不存在既有案卷时，才加载 `legal-case-init`。既有案卷按本次产出加载 `task-do`、`case-file-conventions`、`case-analysis`、`litigation-strategy-report` 或 `trial-outline`。
+1. 先在项目标准结构下搜索既有案件：
+   - 诉讼/仲裁：`ops/cases/案卷/`、`ops/cases/休眠案卷/`、`ops/cases/归档案卷/`
+   - 顾问/专项：`ops/projects/活跃项目/`、`ops/projects/休眠项目/`、`ops/projects/归档项目/`
+   搜索当事人、案由、争议焦点、案号和文件名，确认是既有案件还是新案件。
+2. 既有案件不得另建平行目录；先读案件主文件（`<案件名>/<案件名>.md`），再按案件主文件里列出的链接顺序读取相关任务/材料/分析/文书。
+3. 只有确认不存在既有案件时，才加载 `legal-case-init`。既有案件按本次产出加载 `task-do`、`case-file-conventions`，或项目已配置的其他专项 skill。
 
 ## 跨库复用预检
 
 对新案、实质性新任务和文书/策略工作，在开始实体分析或写作前完成下列检索；单纯登记任务、日程、期限或机械跟进可跳过。
 
-1. 以当事人/客户、案由、程序阶段、事项或文书类型组成 2—5 个检索词，在活跃、休眠、归档案卷和项目中查找同类事实、已完成文书和处理结果。
-2. 在 `templates/`、`config/templates/` 与既有 Markdown 文书中查找可复用的文字模板、格式母版或成熟结构；有具体母版时优先沿用，不以泛化文本替代。
-3. 在 `wiki/distilled/`、`shared-memory/工作流/` 和有关锚点中找可迁移的判断资产、事实变量和流程规则。将命中内容当作工作线索；涉及时效性规则、裁判口径或本案事实时另行核验。
-4. 仅在用户提到已有沟通、会议、想法、录音或个人记录时，用相同检索词定向查 `life/日记/`、`ops/daily/`；可能在 Get笔记时先按 `getnote` 路由到 `getnote-search`。不得无关键词扫读日记，也不得把无关私人记录写入案卷。
+1. 以当事人/客户、案由、程序阶段、事项或文书类型组成 2—5 个检索词，在活跃、休眠、归档案件和项目中查找同类事实、已完成文书和处理结果。
+2. 在 `templates/` 与既有 Markdown 文书中查找可复用的文字模板、格式母版或成熟结构；有具体母版时优先沿用，不以泛化文本替代。
+3. 仅在项目配置了共享知识库时，才在其中查找可迁移的判断资产、事实变量和流程规则。将命中内容当作工作线索；涉及时效性规则、裁判口径或本案事实时另行核验。
+4. 仅在用户提到已有沟通、会议、想法、录音或个人记录时，用相同检索词定向查项目内的 `ops/daily/` 或用户指定的个人笔记位置。不得无关键词扫读私人记录，也不得把无关私人记录写入案卷。
 5. 先向用户简短回显“可复用线索 / 拟采用方式 / 待核验点”，再开始实体工作。新建的实质性任务在正文留 `## 检索与复用`，写入有用来源和采用边界；没有命中也如实记录。
 
 ## 记录行动
 
-先判断记录类型，再写入对应目录：
+先判断记录类型，再写入当前案件文件夹内的对应子目录：
 
 | 情况 | 目录 | 说明 |
 | --- | --- | --- |
@@ -48,4 +51,4 @@ description: "Handle LegalNice mainland-China case work from intake through clos
 
 ## 收尾
 
-按 `case-file-conventions/references/context-governance.md` 更新受影响的快照、分析效力、交接记录和任务/日程/期限/大事记。实体产出放在真实业务目录或工作包，补齐 schema 要求的 `author_role`、`review_state` 和分析字段。
+按 `case-file-conventions` 更新受影响的任务/日程/期限/大事记状态。实体产出放在真实业务目录或工作包，补齐 schema 要求的 `author_role`、`review_state` 和分析字段。

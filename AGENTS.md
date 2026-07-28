@@ -1,4 +1,4 @@
-# Pi Agent Web - Development Notes
+# Mju Agents - Development Notes
 
 ## Quick Start
 
@@ -69,7 +69,7 @@ app/api/
   files/[...path]/route.ts        GET file contents for viewer
   home/route.ts                   GET user home directory
   models/route.ts                 GET { models, modelList, defaultModel }
-  mju-config/route.ts             GET/PUT — global config (~/.mju/config.json), e.g. classifyModel
+  mju-config/route.ts             GET/PUT — global config (~/.mju/config.json), e.g. classifyModel, mineru
   models-config/route.ts          GET/PUT — read/write ~/.pi/agent/models.json
   models-config/test/route.ts     POST test a configured model/provider
   plugins/route.ts                GET/POST package plugin management
@@ -100,7 +100,8 @@ lib/
   normalize.ts        normalizeToolCalls() — field name mismatch between file format and our types
   worktree.ts         project/worktree resolution and git worktree operations
   mju-paths.ts        ~/.mju/ layout — Mju metadata lives outside the workspace
-  mju-config.ts       read/write global ~/.mju/config.json (classifyModel)
+  mju-config.ts       read/write global ~/.mju/config.json (classifyModel, mineru)
+  material-analysis.ts analyzeCaseMaterials() — classify 材料/, auto-move, chronicle, deadlines, review task
   mju-vault-items.ts  scans ops/**/{任务,期限,日程}/*.md frontmatter into the Dates view
   mju-orchestration.ts system-prompt guidance for auto subagent delegation
   pi-runtime-paths.ts resolves bundled pi-subagents package paths (cwd-based fallback for Next/Turbopack)
@@ -224,6 +225,12 @@ Newer pi emits `compaction_start` / `compaction_end`; older versions emitted `au
 
 ### Exported session HTML
 - `/api/sessions/[id]/export` delegates to pi's export helper, then patches recursive tree helpers in the generated HTML to iterative versions so very deep linear sessions do not overflow the browser call stack.
+
+### Document conversion with MinerU
+- Users configure their own MinerU Precision Extract API token in the MINERU panel (`components/MineruConfig.tsx` → `/api/mju-config`).
+- `POST /api/cases/[caseId]/materials/convert` accepts PDF/DOCX/PPT/XLS files, uploads them to MinerU's signed-URL batch endpoint, polls the batch result, downloads the result zip, extracts `full.md`, and saves it as `<原始名>.md` under the case `材料/` folder.
+- The original non-Markdown file is **not** retained in the case vault — only the converted Markdown is kept.
+- Conversion is synchronous from the client's perspective (server polls MinerU up to 5 minutes). When at least one file was saved, the endpoint runs the shared `analyzeCaseMaterials()` from `lib/material-analysis.ts` (the same logic behind `/api/cases/[caseId]/materials/analyze`) to auto-classify and move the new Markdown files, and returns the outcome in the response's `analysis` field.
 
 ## Pi Session File Format
 

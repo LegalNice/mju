@@ -24,9 +24,10 @@
     "dev:webpack": "next dev --webpack -p 30142",
     "build": "next build --webpack",
     "start": "next start -p 30142",
-    "test:backend": "node --test lib/mju-store.test.mjs app/api/legal-routes.test.mjs",
+    "test:backend": "node --test lib/mju-store.test.mjs lib/material-intelligence.test.mjs app/api/legal-routes.test.mjs \"app/api/cases/*/materials/route.test.mjs\" \"app/api/cases/*/materials/analyze/route.test.mjs\" \"app/api/cases/*/materials/convert/route.test.mjs\"",
     "lint": "eslint .",
-    "release": "npm version patch --no-git-tag-version && npm run build && npm publish --access public"
+    "release": "npm version patch --no-git-tag-version && npm run build && npm publish --access public",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@earendil-works/pi-ai": "^0.80.10",
@@ -34,6 +35,7 @@
     "@earendil-works/pi-tui": "^0.80.10",
     "@lobehub/icons": "^5.6.0",
     "@types/react-syntax-highlighter": "^15.5.13",
+    "adm-zip": "^0.6.0",
     "katex": "^0.16.47",
     "mammoth": "^1.12.0",
     "mermaid": "^11.14.0",
@@ -60,5 +62,12 @@
     "postcss": "^8",
     "tailwindcss": "^4.2.2",
     "typescript": "^5"
-  }
+  },
+  "author": "TTTangerineAir",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LegalNice/mju.git"
+  },
+  "bugs": "https://github.com/LegalNice/mju/issues",
+  "homepage": "https://github.com/LegalNice/mju#readme"
 }

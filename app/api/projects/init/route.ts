@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json() as { cwd?: string; name?: string; caseType?: "advisory" | "litigation"; createSkeleton?: boolean; writeGuidance?: boolean };
+    const body = await req.json() as { cwd?: string; name?: string; caseType?: "advisory" | "litigation" | "project"; createSkeleton?: boolean; writeGuidance?: boolean };
     const cwd = body.cwd;
     if (!cwd || !existsSync(cwd)) {
       return NextResponse.json({ error: "cwd does not exist" }, { status: 400 });
