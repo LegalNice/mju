@@ -32,13 +32,13 @@
 **免安装直接运行：**
 
 ```bash
-npx mju@latest
+npx @tttangerine/mju@latest
 ```
 
 **或全局安装：**
 
 ```bash
-npm install -g mju
+npm install -g @tttangerine/mju
 mju
 ```
 

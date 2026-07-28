@@ -32,13 +32,13 @@ Four pages — the thread above, unfolded:
 **Run without installing:**
 
 ```bash
-npx mju@latest
+npx @tttangerine/mju@latest
 ```
 
 **Or install globally:**
 
 ```bash
-npm install -g mju
+npm install -g @tttangerine/mju
 mju
 ```
 

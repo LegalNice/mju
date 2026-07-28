@@ -2,7 +2,7 @@
 
 This repo publishes two artifacts for each release:
 
-- npm package: `mju`
+- npm package: `@tttangerine/mju`
 - GitHub Release: the repository configured before the first public release
 
 Use this checklist from a clean `main` checkout.
@@ -21,7 +21,7 @@ Expected:
 
 - `git status` is clean, or only contains changes you intentionally plan to release.
 - GitHub is authenticated as an account that can push and create releases.
-- npm is authenticated as an account that can publish `mju`.
+- npm is authenticated as an account that can publish `@tttangerine/mju`.
 
 ## 2. Publish to npm
 
@@ -40,12 +40,12 @@ Notes:
 - This bumps `package.json` and `package-lock.json`.
 - It intentionally runs a production build. Do not run `next build` during normal development; release work is the exception.
 - Never run `npm publish` without a fresh production build: the `files` list ships `.next/`, and a dev workspace only contains dev artifacts (no `.next/BUILD_ID`). `prepublishOnly` hard-fails in that case. Prefer releasing from a clean clone (install → build → publish) so a running dev server is not disturbed.
-- Publishing requires an npm account with 2FA (`auth-and-writes`) — pass the current TOTP via `npm publish --otp=<code>`. The repo's `publishConfig` pins the official registry, so a mirror default registry is not a problem.
-- If `npm view mju version` briefly shows the previous version, check the exact version instead:
+- Publishing requires an npm account with 2FA (`auth-and-writes`). Follow npm's authentication prompt: accounts configured with a security key or passkey complete the browser confirmation flow; TOTP-configured accounts can pass the current code with `npm publish --otp=<code>`. The repo's `publishConfig` pins the official registry, so a mirror default registry is not a problem.
+- If `npm view @tttangerine/mju version` briefly shows the previous version, check the exact version instead:
 
 ```bash
-npm view mju@<version> version --registry https://registry.npmjs.org/
-npm view mju versions --json --registry https://registry.npmjs.org/
+npm view @tttangerine/mju@<version> version --registry https://registry.npmjs.org/
+npm view @tttangerine/mju versions --json --registry https://registry.npmjs.org/
 ```
 
 ## 3. Commit the Version Bump
@@ -105,7 +105,7 @@ Suggested structure:
 
 ### 内部调整
 
-- 发布 npm 包 `mju@<version>`。
+- 发布 npm 包 `@tttangerine/mju@<version>`。
 
 ## English
 
@@ -125,7 +125,7 @@ Prepared from commits in `v<previous>..v<version>`.
 
 ### Internal
 
-- Published npm package `mju@<version>`.
+- Published npm package `@tttangerine/mju@<version>`.
 ```
 
 ## 6. Create or Update the GitHub Release
@@ -166,7 +166,7 @@ EOF
 
 ```bash
 gh release view v<version> --repo <owner>/mju
-npm view mju@<version> version --registry https://registry.npmjs.org/
+npm view @tttangerine/mju@<version> version --registry https://registry.npmjs.org/
 git status --short --branch
 git log --oneline --decorate -3
 ```

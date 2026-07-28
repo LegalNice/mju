@@ -1,5 +1,5 @@
 {
-  "name": "mju",
+  "name": "@tttangerine/mju",
   "version": "1.7.0",
   "description": "Mju Agents: a local-first browser workspace with a bundled Pi runtime and subagents",
   "license": "MIT",
