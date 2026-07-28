@@ -881,7 +881,7 @@ export function EntryPage() {
             <Wordmark fontSize={34} />
           </div>
           <div style={{ ...micro, color: "var(--text-dim)", marginTop: 10 }}>
-            Local Agent Workbench
+            Your tough but fair legal assistant
           </div>
         </div>
 

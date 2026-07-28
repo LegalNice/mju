@@ -11,7 +11,7 @@ const notoSansMono = Noto_Sans_Mono({
 
 export const metadata: Metadata = {
   title: "Mju Agents",
-  description: "μ 本地智能体工作台",
+  description: "Your tough but fair legal assistant",
 };
 
 export default function RootLayout({

@@ -1,10 +1,17 @@
-# μ Mju Agents
+# Mju Agents
 
-[中文文档](./README.zh-CN.md)
+[中文文档](./README.zh-CN.md) · [npm](https://www.npmjs.com/package/@tttangerine/mju) · [Roadmap](./docs/roadmap.md)
 
-A local-first agent workbench for legal professionals: conversation is the entry point, and the case is where everything lands.
+> Your tough but fair legal assistant. Start with a sentence; end with reviewed work, filed in the right case.
 
-![Mju Agents entry page](./docs/screenshot-entry.png)
+![Mju Agents entry page](https://raw.githubusercontent.com/LegalNice/mju/feature/subagents-ui/docs/screenshots/entry.png)
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/LegalNice/mju/feature/subagents-ui/docs/screenshots/case-board.png" alt="Mju case board" width="49%" />
+  <img src="https://raw.githubusercontent.com/LegalNice/mju/feature/subagents-ui/docs/screenshots/dates.png" alt="Mju Dates view" width="49%" />
+</p>
+
+The screenshots use a fictional matter and contain no client, case, or account data.
 
 ## Why Mju
 
@@ -18,7 +25,13 @@ A few principles run through everything:
 - **The entry point files things for you.** As you type an instruction, Mju detects which case it belongs to (always correctable), and files the task, schedule, or deadline it implies — then reminds you before it's due. Anything unrecognized goes to an inbox board, never lost.
 - **Done isn't done until you review it.** Legal work needs a second pair of eyes. Everything the agent produces waits in a "to review" state until you sign off.
 
-## How it works
+## From one sentence to reviewed work
+
+1. **Start at the entry page.** Describe the task in ordinary language. Mju matches it to a case (you can always correct it), creates the working task, and starts the agent in that case folder.
+2. **Run the matter from its board.** Materials, tasks, agent sessions, deadlines, and deliverables remain attached to the case instead of scattering across chat tabs and folders.
+3. **Review before it counts.** The task page preserves the agent's work trail and document preview. You remain responsible for the legal judgment and final sign-off.
+
+## The workbench
 
 Four pages — the thread above, unfolded:
 

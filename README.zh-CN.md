@@ -1,10 +1,17 @@
-# μ Mju Agents
+# Mju Agents
 
-[English](./README.md)
+[English](./README.md) · [npm](https://www.npmjs.com/package/@tttangerine/mju) · [路线图](./docs/roadmap.md)
 
-面向法律从业者的本地优先 Agent 工作台：对话是入口，案件是落点。
+> 你的严格但公正的法律助手：从一句话开始，把经过复核的工作落到正确案件里。
 
-![Mju Agents 进入页](./docs/screenshot-entry.png)
+![Mju Agents 进入页](https://raw.githubusercontent.com/LegalNice/mju/feature/subagents-ui/docs/screenshots/entry.png)
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/LegalNice/mju/feature/subagents-ui/docs/screenshots/case-board.png" alt="Mju 案件看板" width="49%" />
+  <img src="https://raw.githubusercontent.com/LegalNice/mju/feature/subagents-ui/docs/screenshots/dates.png" alt="Mju Dates 视图" width="49%" />
+</p>
+
+截图使用完全虚构的案件和任务数据，不包含客户、案件或账户信息。
 
 ## 为什么做 Mju
 
@@ -18,7 +25,13 @@
 - **入口替你归位。** 输入指令时，Mju 会主动识别它属于哪个案件（识别错了随时可改），顺手把任务、日程、截止时间落下来，并在到期前提醒你。识别不了的先进「通用任务」收件箱，不会丢。
 - **做完不等于完成。** 法律工作需要复核。Agent 产出的每件事都停在「待 Review」状态，由你过目后才算数。
 
-## 工作方式
+## 从一句话到经你复核的工作
+
+1. **从进入页开始。** 用日常语言描述事项；Mju 匹配所属案件（随时可改）、创建任务，并在该案件文件夹内启动 Agent。
+2. **在案件看板推进。** 材料、任务、Agent 会话、期限和交付物始终绑定同一案件，不再散落在聊天标签和文件夹里。
+3. **经复核才算完成。** 任务页保留 Agent 的工作过程和文档预览；专业判断与最终确认始终由你作出。
+
+## 工作台结构
 
 四个页面，就是上面这条主线的展开：
 
