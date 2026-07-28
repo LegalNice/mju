@@ -39,6 +39,8 @@ Notes:
 
 - This bumps `package.json` and `package-lock.json`.
 - It intentionally runs a production build. Do not run `next build` during normal development; release work is the exception.
+- Never run `npm publish` without a fresh production build: the `files` list ships `.next/`, and a dev workspace only contains dev artifacts (no `.next/BUILD_ID`). `prepublishOnly` hard-fails in that case. Prefer releasing from a clean clone (install → build → publish) so a running dev server is not disturbed.
+- Publishing requires an npm account with 2FA (`auth-and-writes`) — pass the current TOTP via `npm publish --otp=<code>`. The repo's `publishConfig` pins the official registry, so a mirror default registry is not a problem.
 - If `npm view mju version` briefly shows the previous version, check the exact version instead:
 
 ```bash

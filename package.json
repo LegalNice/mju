@@ -29,7 +29,8 @@
     "test:backend": "node --test lib/mju-store.test.mjs lib/material-intelligence.test.mjs app/api/legal-routes.test.mjs \"app/api/cases/*/materials/route.test.mjs\" \"app/api/cases/*/materials/analyze/route.test.mjs\" \"app/api/cases/*/materials/convert/route.test.mjs\"",
     "lint": "eslint .",
     "release": "npm version patch --no-git-tag-version && npm run build && npm publish --access public",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "node -e \"try{require('fs').accessSync('.next/BUILD_ID')}catch{console.error('✗ .next/BUILD_ID missing — run npm run build in a clean tree before publishing (never publish dev artifacts)');process.exit(1)}\""
   },
   "dependencies": {
     "@earendil-works/pi-ai": "^0.80.10",
