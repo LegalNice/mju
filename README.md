@@ -4,11 +4,16 @@
 
 > Your tough but fair legal assistant. Start with a sentence; end with reviewed work, filed in the right case.
 
-![Mju Agents entry page](https://raw.githubusercontent.com/LegalNice/mju/feature/subagents-ui/docs/screenshots/entry.png)
+![Mju Agents entry page](./docs/screenshots/entry-empty.png)
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/LegalNice/mju/feature/subagents-ui/docs/screenshots/case-board.png" alt="Mju case board" width="49%" />
-  <img src="https://raw.githubusercontent.com/LegalNice/mju/feature/subagents-ui/docs/screenshots/dates.png" alt="Mju Dates view" width="49%" />
+  <img src="./docs/screenshots/onboarding.png" alt="Mju project onboarding" width="49%" />
+  <img src="./docs/screenshots/case-detection.png" alt="Mju case detection" width="49%" />
+</p>
+
+<p align="center">
+  <img src="./docs/screenshots/new-case.png" alt="Mju new case dialog" width="49%" />
+  <img src="./docs/screenshots/case-board-running.png" alt="Mju case board with a running task" width="49%" />
 </p>
 
 The screenshots use a fictional matter and contain no client, case, or account data.
@@ -30,6 +35,8 @@ A few principles run through everything:
 1. **Start at the entry page.** Describe the task in ordinary language. Mju matches it to a case (you can always correct it), creates the working task, and starts the agent in that case folder.
 2. **Run the matter from its board.** Materials, tasks, agent sessions, deadlines, and deliverables remain attached to the case instead of scattering across chat tabs and folders.
 3. **Review before it counts.** The task page preserves the agent's work trail and document preview. You remain responsible for the legal judgment and final sign-off.
+
+In practice, a new workspace begins with a project folder. Mju can create the standard case structure and write the project `AGENTS.md` guide for you. From the entry page, you can create a case inline, choose its matter type, let Mju detect the target case while you type, or switch the case before launching. Once launched, the case board shows the task as running and keeps matter actions nearby: upload materials, convert PDF/DOCX to Markdown, start a workflow, and collect dispute-resolution notes.
 
 ## The workbench
 

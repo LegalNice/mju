@@ -4,11 +4,16 @@
 
 > 你的严格但公正的法律助手：从一句话开始，把经过复核的工作落到正确案件里。
 
-![Mju Agents 进入页](https://raw.githubusercontent.com/LegalNice/mju/feature/subagents-ui/docs/screenshots/entry.png)
+![Mju Agents 进入页](./docs/screenshots/entry-empty.png)
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/LegalNice/mju/feature/subagents-ui/docs/screenshots/case-board.png" alt="Mju 案件看板" width="49%" />
-  <img src="https://raw.githubusercontent.com/LegalNice/mju/feature/subagents-ui/docs/screenshots/dates.png" alt="Mju Dates 视图" width="49%" />
+  <img src="./docs/screenshots/onboarding.png" alt="Mju 项目初始化" width="49%" />
+  <img src="./docs/screenshots/case-detection.png" alt="Mju 案件识别" width="49%" />
+</p>
+
+<p align="center">
+  <img src="./docs/screenshots/new-case.png" alt="Mju 新建案件" width="49%" />
+  <img src="./docs/screenshots/case-board-running.png" alt="Mju 运行中的案件看板" width="49%" />
 </p>
 
 截图使用完全虚构的案件和任务数据，不包含客户、案件或账户信息。
@@ -30,6 +35,8 @@
 1. **从进入页开始。** 用日常语言描述事项；Mju 匹配所属案件（随时可改）、创建任务，并在该案件文件夹内启动 Agent。
 2. **在案件看板推进。** 材料、任务、Agent 会话、期限和交付物始终绑定同一案件，不再散落在聊天标签和文件夹里。
 3. **经复核才算完成。** 任务页保留 Agent 的工作过程和文档预览；专业判断与最终确认始终由你作出。
+
+实际使用时，新工作区先从选择项目文件夹开始。Mju 可以自动生成标准案件结构，并写入项目级 `AGENTS.md` 指引。进入页支持直接新建案件、选择争议解决 / 顾问 / 专项等案件类型；输入任务时会识别所属案件，也可以手动更改归属后再启动。启动后，案件看板会把任务标记为执行中，并把上传材料、PDF/DOCX 转 Markdown、启动工作流、争议解决收案等操作放在同一案件视图里。
 
 ## 工作台结构
 
