@@ -535,6 +535,11 @@ export function EntryPage() {
             selection = stored;
           }
         } catch { /* malformed cache — fall back to the default */ }
+        // Fresh installs have no settings default — preselect the first
+        // available model so the first launch does not fail on "no model".
+        if (!selection && list.length > 0) {
+          selection = { provider: list[0].provider, modelId: list[0].id };
+        }
         setSelectedModel(selection);
       })
       .catch(() => {});
@@ -1159,19 +1164,21 @@ export function EntryPage() {
                   <button
                     type="button"
                     className="mju-entry-model"
-                    onClick={() => setModelMenuOpen((v) => !v)}
+                    onClick={() => (modelList.length > 0 ? setModelMenuOpen((v) => !v) : setActiveConfig("models"))}
                     style={{
                       border: "none",
                       background: "transparent",
                       padding: 0,
                       font: "inherit",
-                      color: "var(--text-muted)",
+                      color: modelList.length > 0 ? "var(--text-muted)" : "var(--accent)",
                       fontSize: 11,
                       letterSpacing: ".06em",
-                      cursor: modelList.length > 0 ? "pointer" : "default",
+                      cursor: modelList.length > 0 ? "pointer" : "pointer",
                     }}
                   >
-                    {modelDisplay}{modelList.length > 0 ? " ▾" : ""}
+                    {modelList.length > 0
+                      ? <>{modelDisplay} ▾</>
+                      : "未配置模型 — 点击设置 API Key"}
                   </button>
                   {modelMenuOpen && modelList.length > 0 && (
                     <div

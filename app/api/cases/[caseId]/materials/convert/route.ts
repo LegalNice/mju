@@ -45,8 +45,18 @@ function uniqueOutputPath(dir: string, originalName: string): string {
   }
 }
 
+/** Surface the real network cause behind undici's opaque "fetch failed". */
+async function fetchWithCause(url: string, options?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, options);
+  } catch (err) {
+    const cause = err instanceof Error && err.cause instanceof Error ? `: ${err.cause.message}` : "";
+    throw new Error(`连接 MinerU 失败（${err instanceof Error ? err.message : String(err)}${cause}）`);
+  }
+}
+
 async function fetchJson(url: string, options?: RequestInit): Promise<unknown> {
-  const res = await fetch(url, options);
+  const res = await fetchWithCause(url, options);
   const text = await res.text();
   let parsed: unknown;
   try {
@@ -108,7 +118,7 @@ async function createBatchUpload(token: string, files: MineruFile[], options: {
 
 async function uploadToSignedUrls(files: MineruFile[], signedUrls: string[]): Promise<void> {
   for (let i = 0; i < files.length; i++) {
-    const res = await fetch(signedUrls[i], {
+    const res = await fetchWithCause(signedUrls[i], {
       method: "PUT",
       body: new Uint8Array(files[i].bytes),
     });
@@ -156,7 +166,7 @@ async function pollBatchResult(token: string, batchId: string, fileName: string)
 }
 
 async function extractMarkdownFromZip(zipUrl: string): Promise<string> {
-  const res = await fetch(zipUrl);
+  const res = await fetchWithCause(zipUrl);
   if (!res.ok) {
     throw new Error(`下载 MinerU 结果失败（${res.status}）`);
   }
