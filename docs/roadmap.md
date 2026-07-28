@@ -252,7 +252,7 @@ interface Deliverable {
 
 - 新端点 `POST /api/classify {cwd, instruction}`：案件列表 + 指令发给默认模型，返回编号映射 caseId；收件箱不作为候选；15s 超时
 - 进入页双防抖：200ms 本地匹配 → 800ms 无本地命中且 ≥8 字自动调 classify（chip「识别中…」）；递增序号丢弃过期响应；launch 会 await 在飞的 classify
-- 验收：CDP 实测「学知义那个顾问合同续签」→ 识别中… → 识别为 常法-学知义
+- 验收：CDP 实测「李构耐斯那个顾问合同续签」→ 识别中… → 识别为 常法-李构耐斯
 
 ### 第 3 步：工作流启动器接入案件 Board ✅
 
