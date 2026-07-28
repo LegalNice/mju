@@ -15,7 +15,9 @@
     "!.next/cache",
     "!.next/dev",
     "!.next/**/*.js.map",
+    "defaults",
     "public",
+    "NOTICE",
     "next.config.ts",
     "package.json"
   ],
