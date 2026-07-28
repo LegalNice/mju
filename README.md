@@ -1,6 +1,6 @@
 # Mju Agents
 
-[中文文档](./README.zh-CN.md) · [npm](https://www.npmjs.com/package/@tttangerine/mju) · [Roadmap](./docs/roadmap.md)
+[中文文档](./README.zh-CN.md) · [npm](https://www.npmjs.com/package/@tttangerine/mju) · [License: MIT](./LICENSE) · [Roadmap](./docs/roadmap.md)
 
 > Your tough but fair legal assistant. Start with a sentence; end with reviewed work, filed in the right case.
 
@@ -80,6 +80,10 @@ mju --no-open                # do not open the browser automatically
 - **Local-first**: sessions in `~/.pi/agent/sessions`, project metadata in `~/.mju/projects`, nothing leaves the machine. The pi runtime and `pi-subagents` are bundled — no separate CLI install needed.
 
 It is not a legal advice service and does not replace professional review. All session files, case metadata, and credentials stay on your machine.
+
+## License and upstream
+
+Mju Agents is released under the [MIT License](./LICENSE). It began as a derivative of [agegr/pi-web](https://github.com/agegr/pi-web), which is also licensed under MIT; Mju's legal-workflow features and subsequent changes are maintained independently. The required upstream and bundled-runtime attributions are retained in [NOTICE](./NOTICE). Mju is not affiliated with or endorsed by agegr or the upstream project.
 
 ## Roadmap
 

@@ -1,6 +1,6 @@
 # Mju Agents
 
-[English](./README.md) · [npm](https://www.npmjs.com/package/@tttangerine/mju) · [路线图](./docs/roadmap.md)
+[English](./README.md) · [npm](https://www.npmjs.com/package/@tttangerine/mju) · [许可证：MIT](./LICENSE) · [路线图](./docs/roadmap.md)
 
 > 你的严格但公正的法律助手：从一句话开始，把经过复核的工作落到正确案件里。
 
@@ -80,6 +80,10 @@ mju --no-open                # 不自动打开浏览器
 - **本地优先**：会话存在 `~/.pi/agent/sessions`，项目元数据存在 `~/.mju/projects`，数据不出本机。pi 运行时和 `pi-subagents` 已内置，无需单独安装 CLI。
 
 它不是法律意见服务，也不替代专业复核。所有会话文件、案件元数据和凭证都留在你自己的机器上。
+
+## 许可证与上游项目
+
+Mju Agents 以 [MIT License](./LICENSE) 开源。项目最初基于同样采用 MIT 许可证的 [agegr/pi-web](https://github.com/agegr/pi-web) 衍生而来；其中法律工作流功能及后续修改由 Mju 独立维护。上游和内置运行时所需的归因均保留在 [NOTICE](./NOTICE)。Mju 与 agegr 或上游项目不存在隶属、合作或背书关系。
 
 ## 路线图
 
