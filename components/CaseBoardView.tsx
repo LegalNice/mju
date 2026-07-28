@@ -314,14 +314,12 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [caseQuery, setCaseQuery] = useState("");
   const [runningSessionIds, setRunningSessionIds] = useState<Set<string>>(new Set());
-  const [uploading, setUploading] = useState(false);
+  const [importingMaterials, setImportingMaterials] = useState(false);
   const [uploadResult, setUploadResult] = useState<string | null>(null);
-  const [converting, setConverting] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const wfMenuRef = useRef<HTMLDivElement | null>(null);
   const taskMenuRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const convertInputRef = useRef<HTMLInputElement | null>(null);
 
   const loadCases = useCallback(async () => {
     const res = await fetch(`/api/cases?cwd=${encodeURIComponent(cwd)}`);
@@ -637,80 +635,86 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
     }
   }, [preview, starting, cwd, caseId, closePreview, loadTasks, loadWorkflows]);
 
-  const uploadMaterials = useCallback(
+  const importMaterials = useCallback(
     async (files: FileList | null) => {
       if (!files || files.length === 0) return;
-      setUploading(true);
+      setImportingMaterials(true);
       setUploadResult(null);
       try {
-        const formData = new FormData();
-        for (const file of Array.from(files)) formData.append("files", file);
-        const uploadRes = await fetch(
-          `/api/cases/${caseId}/materials?cwd=${encodeURIComponent(cwd)}&conflict=overwrite`,
-          { method: "POST", body: formData },
+        const selectedFiles = Array.from(files);
+        const convertibleFiles = selectedFiles.filter((file) =>
+          /\.(pdf|doc|docx|ppt|pptx|xls|xlsx)$/i.test(file.name),
         );
-        if (!uploadRes.ok) throw new Error(`upload ${uploadRes.status}`);
-        const uploadData = (await uploadRes.json()) as { uploaded: string[] };
-        const analyzeRes = await fetch(
-          `/api/cases/${caseId}/materials/analyze?cwd=${encodeURIComponent(cwd)}`,
-          { method: "POST" },
-        );
-        if (!analyzeRes.ok) throw new Error(`analyze ${analyzeRes.status}`);
-        const analyzeData = (await analyzeRes.json()) as {
-          createdDeadlines: { deadline: { title: string } }[];
-          moved: { from: string; to: string }[];
-        };
-        setUploadResult(
-          `已上传 ${uploadData.uploaded.length} 份材料；自动归位 ${analyzeData.moved.length} 份，创建 ${analyzeData.createdDeadlines.length} 个期限和 1 个审阅任务。`,
-        );
-        await loadTasks();
-      } catch (err) {
-        setUploadResult(`上传失败：${err instanceof Error ? err.message : String(err)}`);
-      } finally {
-        setUploading(false);
-        if (fileInputRef.current) fileInputRef.current.value = "";
-      }
-    },
-    [caseId, cwd, loadTasks],
-  );
+        const directFiles = selectedFiles.filter((file) => !convertibleFiles.includes(file));
+        let importedCount = 0;
+        let convertedCount = 0;
+        let failedCount = 0;
+        let movedCount = 0;
+        let deadlineCount = 0;
 
-  const convertMaterials = useCallback(
-    async (files: FileList | null) => {
-      if (!files || files.length === 0) return;
-      setConverting(true);
-      setUploadResult(null);
-      try {
-        const formData = new FormData();
-        for (const file of Array.from(files)) formData.append("files", file);
-        const convertRes = await fetch(
-          `/api/cases/${caseId}/materials/convert?cwd=${encodeURIComponent(cwd)}`,
-          { method: "POST", body: formData },
-        );
-        const convertData = (await convertRes.json()) as {
-          saved?: string[];
-          errors?: Array<{ name: string; error: string }>;
-          analysis?: {
-            moved: { from: string; to: string }[];
+        if (directFiles.length > 0) {
+          const formData = new FormData();
+          for (const file of directFiles) formData.append("files", file);
+          const materialRes = await fetch(
+            `/api/cases/${caseId}/materials?cwd=${encodeURIComponent(cwd)}&conflict=overwrite`,
+            { method: "POST", body: formData },
+          );
+          const materialData = (await materialRes.json()) as {
+            uploaded?: string[];
+            error?: string;
+          };
+          if (!materialRes.ok) {
+            throw new Error(materialData.error ?? `materials ${materialRes.status}`);
+          }
+          importedCount = materialData.uploaded?.length ?? 0;
+
+          const analyzeRes = await fetch(
+            `/api/cases/${caseId}/materials/analyze?cwd=${encodeURIComponent(cwd)}`,
+            { method: "POST" },
+          );
+          if (!analyzeRes.ok) throw new Error(`analyze ${analyzeRes.status}`);
+          const analyzeData = (await analyzeRes.json()) as {
             createdDeadlines: { deadline: { title: string } }[];
-          } | null;
-          error?: string;
-        };
-        if (!convertRes.ok) {
-          throw new Error(convertData.error ?? `convert ${convertRes.status}`);
+            moved: { from: string; to: string }[];
+          };
+          movedCount += analyzeData.moved.length;
+          deadlineCount += analyzeData.createdDeadlines.length;
         }
-        const saved = convertData.saved ?? [];
-        const errors = convertData.errors ?? [];
-        const movedCount = convertData.analysis?.moved.length ?? 0;
-        const deadlineCount = convertData.analysis?.createdDeadlines.length ?? 0;
+
+        if (convertibleFiles.length > 0) {
+          const formData = new FormData();
+          for (const file of convertibleFiles) formData.append("files", file);
+          const convertRes = await fetch(
+            `/api/cases/${caseId}/materials/convert?cwd=${encodeURIComponent(cwd)}`,
+            { method: "POST", body: formData },
+          );
+          const convertData = (await convertRes.json()) as {
+            saved?: string[];
+            errors?: Array<{ name: string; error: string }>;
+            analysis?: {
+              moved: { from: string; to: string }[];
+              createdDeadlines: { deadline: { title: string } }[];
+            } | null;
+            error?: string;
+          };
+          if (!convertRes.ok) {
+            throw new Error(convertData.error ?? `convert ${convertRes.status}`);
+          }
+          convertedCount = convertData.saved?.length ?? 0;
+          failedCount = convertData.errors?.length ?? 0;
+          movedCount += convertData.analysis?.moved.length ?? 0;
+          deadlineCount += convertData.analysis?.createdDeadlines.length ?? 0;
+        }
+
         setUploadResult(
-          `已转换 ${saved.length} 份为 Markdown${errors.length > 0 ? `，${errors.length} 份失败` : ""}；自动归位 ${movedCount} 份，创建 ${deadlineCount} 个期限。`,
+          `已导入 ${importedCount} 份本地材料，转换 ${convertedCount} 份为 Markdown${failedCount > 0 ? `，${failedCount} 份转换失败` : ""}；自动归位 ${movedCount} 份，创建 ${deadlineCount} 个期限。`,
         );
         await loadTasks();
       } catch (err) {
-        setUploadResult(`转换失败：${err instanceof Error ? err.message : String(err)}`);
+        setUploadResult(`导入失败：${err instanceof Error ? err.message : String(err)}`);
       } finally {
-        setConverting(false);
-        if (convertInputRef.current) convertInputRef.current.value = "";
+        setImportingMaterials(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
       }
     },
     [caseId, cwd, loadTasks],
@@ -834,25 +838,15 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
         </div>
         <div style={{ display: "flex", alignItems: "baseline", gap: 16 }}>
           <TextButton onClick={() => fileInputRef.current?.click()}>
-            {uploading ? "上传中…" : "上传材料"}
+            {importingMaterials ? "导入中…" : "导入材料"}
           </TextButton>
           <input
             ref={fileInputRef}
             type="file"
             multiple
+            accept=".md,.markdown,.txt,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
             style={{ display: "none" }}
-            onChange={(e) => uploadMaterials(e.target.files)}
-          />
-          <TextButton onClick={() => convertInputRef.current?.click()}>
-            {converting ? "转换中…" : "PDF/DOCX 转 Markdown"}
-          </TextButton>
-          <input
-            ref={convertInputRef}
-            type="file"
-            multiple
-            accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
-            style={{ display: "none" }}
-            onChange={(e) => convertMaterials(e.target.files)}
+            onChange={(e) => importMaterials(e.target.files)}
           />
           {workflows && workflows.length > 0 && (
             <div ref={wfMenuRef} style={{ position: "relative" }}>
@@ -909,7 +903,7 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
         <div
           style={{
             fontSize: 12,
-            color: uploadResult.startsWith("上传失败") ? "var(--accent)" : "var(--text-muted)",
+            color: uploadResult.startsWith("导入失败") ? "var(--accent)" : "var(--text-muted)",
             marginBottom: 16,
           }}
         >

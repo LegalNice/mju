@@ -123,7 +123,7 @@ async function uploadToSignedUrls(files: MineruFile[], signedUrls: string[]): Pr
       body: new Uint8Array(files[i].bytes),
     });
     if (!res.ok) {
-      throw new Error(`上传 ${files[i].name} 到 MinerU 失败（${res.status}）`);
+      throw new Error(`提交 ${files[i].name} 到 MinerU 失败（${res.status}）`);
     }
   }
 }

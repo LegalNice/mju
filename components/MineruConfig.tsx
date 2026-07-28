@@ -147,7 +147,7 @@ export function MineruConfig({ onClose }: { onClose: () => void }) {
               文档转 Markdown
             </h2>
             <p style={{ margin: "7px 0 0", color: "var(--text-muted)", fontSize: 12 }}>
-              在 <a href="https://mineru.net/apiManage" target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>mineru.net</a> 创建 Token 后填入，上传 PDF/DOCX 即可自动转为 MD 存入案卷。
+              在 <a href="https://mineru.net/apiManage" target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>mineru.net</a> 创建 Token 后填入，选取 PDF/DOCX 即可自动转为 MD 存入案卷。
             </p>
           </div>
           <button
