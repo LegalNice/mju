@@ -16,7 +16,7 @@
   <img src="./docs/screenshots/case-board-running.png" alt="Mju 运行中的案件看板" width="49%" />
 </p>
 
-截图使用完全虚构的案件和任务数据，不包含客户、案件或账户信息。
+
 
 ## 截图导览：从初始化到案件执行
 
