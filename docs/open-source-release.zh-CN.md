@@ -1,5 +1,12 @@
 # 开源发布与隐私边界
 
+## 许可证与上游归因
+
+Mju Agents 以 [MIT License](../LICENSE) 发布，最初基于同样采用 MIT 许可证的
+[agegr/pi-web](https://github.com/agegr/pi-web) 衍生。每次发布源码和 npm 包时，
+均应保留 [NOTICE](../NOTICE) 中的上游版权声明和内置运行时归因。Mju 为独立维护的
+衍生项目，与 agegr 不存在隶属、合作或背书关系。
+
 ## 可以发布
 
 - 源代码、测试、文档和通用示例配置。

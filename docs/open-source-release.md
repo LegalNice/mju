@@ -1,5 +1,14 @@
 # Open-source release and privacy
 
+## License and upstream attribution
+
+Mju Agents is distributed under the [MIT License](../LICENSE). It is derived
+from [agegr/pi-web](https://github.com/agegr/pi-web), also under MIT. Keep the
+upstream copyright notice and the bundled-runtime attributions in
+[NOTICE](../NOTICE) in every source and npm distribution. Mju is an
+independently maintained derivative and is not affiliated with or endorsed by
+agegr.
+
 ## Safe to publish
 
 - Source code, tests, documentation, and generic example configuration.
