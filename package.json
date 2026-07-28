@@ -69,5 +69,9 @@
     "url": "https://github.com/LegalNice/mju.git"
   },
   "bugs": "https://github.com/LegalNice/mju/issues",
-  "homepage": "https://github.com/LegalNice/mju#readme"
+  "homepage": "https://github.com/LegalNice/mju#readme",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
+  }
 }
