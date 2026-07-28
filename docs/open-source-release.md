@@ -18,6 +18,6 @@
 Before the first public push, review the staged file list, search it for
 personal paths and secrets, and verify the app from a clean clone without your
 personal Obsidian vault. Also confirm the public npm and GitHub identities:
-the intended package name is `mju`. Before publishing, add the final GitHub
+the intended package name is `@tttangerine/mju`. Before publishing, add the final GitHub
 repository URL to `package.json`; do not leave upstream repository metadata in
 the package.

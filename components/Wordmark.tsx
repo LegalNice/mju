@@ -1,8 +1,8 @@
 /**
- * Brand lockup: handwritten red μ followed by "Mju AGENTS" in the regular UI
- * font. The μ uses the platform handwriting font (Snell Roundhand on macOS)
- * with a cursive fallback — no bundled font files. Used on the entry hero,
- * AppNav, and the chat empty state.
+ * Brand lockup: a restrained serif μ mark followed by "Mju AGENTS". The
+ * distinctive Greek mark stays central to the identity without relying on a
+ * handwritten font, while the wordmark stays crisp in the regular UI font.
+ * Used on the entry hero, AppNav, and the chat empty state.
  */
 export function Wordmark({ fontSize = 15 }: { fontSize?: number }) {
   return (
@@ -10,16 +10,19 @@ export function Wordmark({ fontSize = 15 }: { fontSize?: number }) {
       <span
         aria-hidden="true"
         style={{
-          fontFamily: '"Snell Roundhand", "Bradley Hand", "Segoe Script", cursive',
-          fontSize: fontSize * 1.5,
-          lineHeight: 0.8,
+          fontFamily: 'Georgia, "Times New Roman", serif',
+          fontSize: fontSize * 1.34,
+          fontWeight: 700,
+          fontStyle: "italic",
+          letterSpacing: "-0.14em",
+          lineHeight: 0.9,
           color: "var(--accent)",
-          transform: "translateY(0.05em)",
+          transform: "translateY(0.02em)",
         }}
       >
         μ
       </span>
-      <span style={{ fontWeight: 700, fontSize, color: "var(--text)", letterSpacing: "-0.01em" }}>
+      <span style={{ fontWeight: 700, fontSize, color: "var(--text)", letterSpacing: "0.025em" }}>
         Mju AGENTS
       </span>
     </span>
