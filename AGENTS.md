@@ -10,6 +10,33 @@ Typecheck: `node_modules/.bin/tsc --noEmit`
 Lint: `npm run lint`  
 **Never run `next build` during dev** — pollutes `.next/` and breaks `npm run dev`.
 
+## Local Development Workflow
+
+Use this workflow whenever continuing development on this machine. The default
+branch `main` is protected: make changes on a new branch and merge through a
+pull request.
+
+```bash
+# Start every new piece of work from the current remote main branch.
+git switch main
+git pull --ff-only origin main
+git switch -c codex/<short-task-name>
+
+# Install only on the first run or after dependency changes.
+npm install
+
+# Start the local development server, then open http://localhost:30142.
+npm run dev
+```
+
+- Stop the development server with `Ctrl+C`.
+- Before committing, run `npm run typecheck`, `npm run lint`, and, when the
+  change touches backend behavior, `npm run test:backend`.
+- Do not develop on an already-merged feature branch. Do not commit unrelated
+  or untracked local files. Push the new branch and open a PR to `main`.
+- `npm run build` is for a clean release clone only, never for this development
+  worktree.
+
 ---
 
 ## Architecture
