@@ -490,14 +490,19 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
   );
 
   const handleStartSession = useCallback(async () => {
-    if (!currentCase || starting) return;
+    if (!currentCase || !task || starting) return;
     setStarting(true);
     setStartError(null);
     try {
+      // Send the task instruction as the first prompt instead of ensure_session.
+      // pi only persists a session file once the first assistant message exists,
+      // so ensure_session produced a phantom sessionId with no .jsonl behind it —
+      // the chat then loaded a 404 forever and looked unresponsive.
+      const instruction = task.originPrompt || task.detail || task.title;
       const res = await fetch("/api/agent/new", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cwd: currentCase.vaultPath, type: "ensure_session" }),
+        body: JSON.stringify({ cwd: currentCase.vaultPath, type: "prompt", message: instruction }),
       });
       if (!res.ok) throw new Error(`agent/new ${res.status}`);
       const data = (await res.json()) as { sessionId?: string };
@@ -509,7 +514,7 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
     } finally {
       setStarting(false);
     }
-  }, [currentCase, starting, bindSession]);
+  }, [currentCase, task, starting, bindSession]);
 
   // 聊天中点击文件链接：若是案件文档则切到右栏预览，否则忽略
   const handleOpenFile = useCallback(

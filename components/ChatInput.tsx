@@ -34,6 +34,8 @@ interface Props {
   modelNames?: Record<string, string>;
   modelList?: { id: string; name: string; provider: string }[];
   onModelChange?: (provider: string, modelId: string) => void;
+  defaultModel?: { provider: string; modelId: string } | null;
+  onSetDefaultModel?: (provider: string, modelId: string) => void;
   onCompact?: () => void;
   onAbortCompaction?: () => void;
   isCompacting?: boolean;
@@ -190,6 +192,7 @@ function QueuedMessageRow({ kind, text }: { kind: "steer" | "follow-up"; text: s
 
 export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   onSend, onAbort, onSteer, onFollowUp, isStreaming, model, isAutoModelSelection, modelNames, modelList, onModelChange,
+  defaultModel, onSetDefaultModel,
   onCompact, onAbortCompaction, isCompacting, compactError, compactResult, toolPreset, onToolPresetChange,
   thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap,
   retryInfo, queuedMessages, onRecallQueue,
@@ -1613,6 +1616,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                           )}
                           {group.options.map((opt) => {
                             const isActive = opt.modelId === model?.modelId && opt.provider === model?.provider;
+                            const isDefault = defaultModel?.modelId === opt.modelId && defaultModel?.provider === opt.provider;
                             return (
                               <button
                                 key={`${opt.provider}:${opt.modelId}`}
@@ -1633,7 +1637,27 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                                 {isActive
                                   ? <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><polyline points="1.5 5 4 7.5 8.5 2.5" /></svg>
                                   : <span style={{ width: 10, flexShrink: 0 }} />}
-                                {opt.name}
+                                <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>{opt.name}</span>
+                                {onSetDefaultModel && (
+                                  <span
+                                    role="button"
+                                    tabIndex={-1}
+                                    title={isDefault ? "默认模型" : "设为默认模型"}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (!isDefault) void onSetDefaultModel(opt.provider, opt.modelId);
+                                    }}
+                                    style={{
+                                      flexShrink: 0, fontSize: 12, lineHeight: 1, padding: "2px",
+                                      color: isDefault ? "var(--accent)" : "var(--text-dim)",
+                                      opacity: isDefault ? 1 : 0.45,
+                                    }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+                                    onMouseLeave={(e) => { if (!isDefault) e.currentTarget.style.opacity = "0.45"; }}
+                                  >
+                                    {isDefault ? "★" : "☆"}
+                                  </span>
+                                )}
                               </button>
                             );
                           })}

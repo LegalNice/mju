@@ -10,7 +10,8 @@ import { createSubagentConfigTool } from "./subagent-config-tool";
 import { getPiSubagentsPaths } from "./pi-runtime-paths";
 import { mjuProjectAgentsDir } from "./mju-paths";
 import { MJU_ORCHESTRATION_PROMPT } from "./mju-orchestration";
-import { delimiter as pathDelimiter } from "node:path";
+import { delimiter as pathDelimiter, join as joinPath } from "node:path";
+import { existsSync } from "node:fs";
 
 /**
  * pi-subagents discovers extra user-scope agent dirs through
@@ -21,6 +22,25 @@ import { delimiter as pathDelimiter } from "node:path";
  */
 function registerMjuAgentsDir(cwd: string): void {
   const dir = mjuProjectAgentsDir(cwd);
+  const existing = (process.env.PI_SUBAGENT_EXTRA_AGENT_DIRS ?? "")
+    .split(pathDelimiter)
+    .filter(Boolean);
+  if (!existing.includes(dir)) {
+    process.env.PI_SUBAGENT_EXTRA_AGENT_DIRS = [...existing, dir].join(pathDelimiter);
+  }
+}
+
+/**
+ * Register the bundled default agents (defaults/agents/ in the package) so
+ * every Mju install ships the legal team (justice/magician/chariot). Extra
+ * dirs are read as user-scope at the LOWEST precedence, so a user's own
+ * ~/.pi/agent/agents or ~/.agents copies with the same name override them.
+ * The bin launcher starts Next with cwd = package root, so process.cwd()
+ * resolves the dir both in dev and in installed deployments.
+ */
+function registerBundledAgentsDir(): void {
+  const dir = joinPath(process.cwd(), "defaults", "agents");
+  if (!existsSync(dir)) return;
   const existing = (process.env.PI_SUBAGENT_EXTRA_AGENT_DIRS ?? "")
     .split(pathDelimiter)
     .filter(Boolean);
@@ -1020,6 +1040,7 @@ export async function startRpcSession(
     // Build services first so extension-registered providers are available
     // before the SDK restores the saved model from the session file.
     registerMjuAgentsDir(cwd);
+    registerBundledAgentsDir();
     const subagentPaths = getPiSubagentsPaths();
     const subagentResources = subagentPaths
       ? {
