@@ -1,6 +1,6 @@
 {
   "name": "@tttangerine/mju",
-  "version": "1.7.2",
+  "version": "1.7.3",
   "description": "Mju Agents: your tough but fair legal assistant, with a bundled Pi runtime and subagents",
   "license": "MIT",
   "engines": {
@@ -18,6 +18,7 @@
     "defaults",
     "public",
     "NOTICE",
+    "CHANGELOG.md",
     "next.config.ts",
     "package.json"
   ],

@@ -11,7 +11,7 @@ import { getPiSubagentsPaths } from "./pi-runtime-paths";
 import { mjuProjectAgentsDir } from "./mju-paths";
 import { MJU_ORCHESTRATION_PROMPT } from "./mju-orchestration";
 import { delimiter as pathDelimiter, join as joinPath } from "node:path";
-import { existsSync } from "node:fs";
+import { cpSync, existsSync, readdirSync } from "node:fs";
 
 /**
  * pi-subagents discovers extra user-scope agent dirs through
@@ -46,6 +46,22 @@ function registerBundledAgentsDir(): void {
     .filter(Boolean);
   if (!existing.includes(dir)) {
     process.env.PI_SUBAGENT_EXTRA_AGENT_DIRS = [...existing, dir].join(pathDelimiter);
+  }
+}
+
+/**
+ * Make Mju's shipped skills available in the user's global Pi skills directory.
+ * Existing directories are deliberately preserved so user edits survive upgrades.
+ */
+function installBundledSkillsToUserDir(): void {
+  const sourceDir = joinPath(process.cwd(), "defaults", "skills");
+  const targetDir = joinPath(getAgentDir(), "skills");
+  if (!existsSync(sourceDir)) return;
+  for (const entry of readdirSync(sourceDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const source = joinPath(sourceDir, entry.name);
+    const target = joinPath(targetDir, entry.name);
+    if (!existsSync(target)) cpSync(source, target, { recursive: true });
   }
 }
 
@@ -1041,6 +1057,7 @@ export async function startRpcSession(
     // before the SDK restores the saved model from the session file.
     registerMjuAgentsDir(cwd);
     registerBundledAgentsDir();
+    installBundledSkillsToUserDir();
     const subagentPaths = getPiSubagentsPaths();
     const subagentResources = subagentPaths
       ? {

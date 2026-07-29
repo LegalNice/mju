@@ -287,7 +287,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
         </div>
       </div>
 
-      <div style={{ fontSize: 14, lineHeight: 1.6, color: "var(--text)", wordBreak: "break-word" }}>
+      <div style={{ width: "fit-content", maxWidth: "100%", padding: "10px 14px", borderRadius: 10, background: "var(--user-bg)", boxShadow: "0 1px 2px color-mix(in srgb, var(--text) 5%, transparent)", fontSize: 14, lineHeight: 1.6, color: "var(--text)", wordBreak: "break-word" }}>
         {imageBlocks.length > 0 && (
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: content ? 8 : 0 }}>
             {imageBlocks.map((img, i) => {
@@ -307,7 +307,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
                   key={i}
                   src={src}
                   alt=""
-                  style={{ maxWidth: 240, maxHeight: 240, borderRadius: 2, objectFit: "contain", display: "block", border: "1px solid var(--border)" }}
+                  style={{ maxWidth: 240, maxHeight: 240, borderRadius: 8, objectFit: "contain", display: "block", border: "1px solid var(--border)" }}
                 />
               );
             })}
@@ -469,11 +469,11 @@ function AssistantMessageView({
           marginBottom: 6,
         }}
       >
-        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--text-dim)", flexShrink: 0 }}>
+        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", color: "var(--text-dim)", flexShrink: 0 }}>
           Assistant
         </span>
         {message.provider && (
-          <span style={{ fontSize: 11, color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <span style={{ padding: "1px 6px", borderRadius: 999, background: "var(--bg-subtle)", fontSize: 10, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {modelNames?.[`${message.provider}:${message.model}`] ?? modelNames?.[message.model] ?? message.model}
           </span>
         )}
@@ -583,7 +583,7 @@ function BlockView({ block, toolResults, isStreaming, streamingDuration, toolCal
 }
 
 function TextBlock({ block, isStreaming, cwd, onOpenFile }: { block: TextContent; isStreaming?: boolean; cwd?: string; onOpenFile?: (filePath: string) => void }) {
-  return <MarkdownBody isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile}>{block.text}</MarkdownBody>;
+  return <MarkdownBody className="markdown-assistant-message" isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile}>{block.text}</MarkdownBody>;
 }
 
 function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex }: {
@@ -621,11 +621,12 @@ function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex }: {
   return (
     <div
       style={{
-        border: "1px solid var(--border)",
-        borderRadius: 2,
+        border: "1px solid color-mix(in srgb, var(--border) 60%, transparent)",
+        borderRadius: 8,
         overflow: "hidden",
         fontSize: 13,
         background: "var(--tool-bg)",
+        boxShadow: "0 1px 2px color-mix(in srgb, var(--text) 4%, transparent)",
       }}
     >
       <button
@@ -658,8 +659,8 @@ function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex }: {
             fontSize: 12,
             lineHeight: 1.6,
             whiteSpace: "pre-wrap",
-            background: "var(--bg)",
-            borderTop: "1px solid var(--border)",
+            background: "color-mix(in srgb, var(--bg) 92%, var(--tool-bg))",
+            borderTop: "1px solid color-mix(in srgb, var(--border) 60%, transparent)",
           }}
         >
           {loading ? "Loading thinking..." : error ?? (block.deferred ? content : block.thinking)}
@@ -686,11 +687,12 @@ function ToolCallBlock({ block, result, duration }: { block: ToolCallContent; re
   return (
     <div
       style={{
-        borderRadius: 2,
+        borderRadius: 8,
         overflow: "hidden",
         fontSize: 12,
-        border: "1px solid var(--border)",
+        border: "1px solid color-mix(in srgb, var(--border) 60%, transparent)",
         background: "var(--tool-bg)",
+        boxShadow: "0 1px 2px color-mix(in srgb, var(--text) 4%, transparent)",
       }}
     >
       {/* ── Tool call header ── */}
@@ -739,8 +741,8 @@ function ToolCallBlock({ block, result, duration }: { block: ToolCallContent; re
             fontSize: 12,
             lineHeight: 1.5,
             overflow: "auto",
-            background: "var(--bg)",
-            borderTop: "1px solid var(--border)",
+            background: "color-mix(in srgb, var(--bg) 92%, var(--tool-bg))",
+            borderTop: "1px solid color-mix(in srgb, var(--border) 60%, transparent)",
             whiteSpace: "pre-wrap",
             wordBreak: "break-all",
           }}
@@ -777,8 +779,8 @@ function PairedDiffResult({ diff }: {
   return (
     <div
       style={{
-        borderTop: "1px solid var(--border)",
-        background: "var(--bg)",
+        borderTop: "1px solid color-mix(in srgb, var(--border) 60%, transparent)",
+        background: "color-mix(in srgb, var(--bg) 92%, var(--tool-bg))",
       }}
     >
       <SplitPatchView text={diff.text} />

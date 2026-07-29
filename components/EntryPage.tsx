@@ -10,14 +10,16 @@ import { SubagentsConfig } from "@/components/SubagentsConfig";
 import { PluginsConfig } from "@/components/PluginsConfig";
 import { ThemeConfig } from "@/components/ThemeConfig";
 import { MineruConfig } from "@/components/MineruConfig";
+import { ChangelogConfig } from "@/components/ChangelogConfig";
 import { Wordmark } from "@/components/Wordmark";
 
 const LS_CWD = "mju-entry-cwd";
 const LS_LAST_CASE = "mju-last-case";
 const LS_MODEL = "mju-entry-model";
+const LS_CHANGELOG_VERSION = "mju-changelog-seen-version";
 const INBOX_TITLE = "通用任务";
 
-type ConfigPanel = "models" | "skills" | "agents" | "plugins" | "theme" | "mineru";
+type ConfigPanel = "models" | "skills" | "agents" | "plugins" | "theme" | "mineru" | "changelog";
 
 interface ProjectSummary {
   cwd: string;
@@ -452,6 +454,16 @@ export function EntryPage() {
   const modelMenuRef = useRef<HTMLDivElement | null>(null);
   const projMenuRef = useRef<HTMLDivElement | null>(null);
 
+  useEffect(() => {
+    try {
+      const version = process.env.NEXT_PUBLIC_APP_VERSION;
+      if (version && localStorage.getItem(LS_CHANGELOG_VERSION) !== version) {
+        setActiveConfig("changelog");
+        localStorage.setItem(LS_CHANGELOG_VERSION, version);
+      }
+    } catch { /* Storage can be unavailable in restricted browser contexts. */ }
+  }, []);
+
   // Load projects once; prefer the persisted cwd when it still exists.
   useEffect(() => {
     let cancelled = false;
@@ -773,6 +785,7 @@ export function EntryPage() {
     { id: "plugins", label: "PLUGINS", needsProject: true },
     { id: "mineru", label: "MINERU" },
     { id: "theme", label: "THEME" },
+    { id: "changelog", label: "CHANGELOG" },
   ];
 
   const launch = async () => {
@@ -1873,6 +1886,7 @@ export function EntryPage() {
       )}
       {activeConfig === "theme" && <ThemeConfig onClose={() => setActiveConfig(null)} />}
       {activeConfig === "mineru" && <MineruConfig onClose={() => setActiveConfig(null)} />}
+      {activeConfig === "changelog" && <ChangelogConfig onClose={() => setActiveConfig(null)} />}
     </div>
   );
 }
