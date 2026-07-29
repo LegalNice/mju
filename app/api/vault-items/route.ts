@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { scanVaultItems, type VaultItem } from "@/lib/mju-vault-items";
-import { getProjectStore, isProjectStore } from "@/lib/mju-route-utils";
+import { scanVaultItems, type VaultItem, updateVaultItemDate } from "@/lib/mju-vault-items";
+import { getProjectStore, isProjectStore, isValidDate } from "@/lib/mju-route-utils";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,4 +26,30 @@ export async function GET(req: Request) {
   const items = scanVaultItems(project.cwd, project.store);
   globalThis.__mjuVaultItemsCache = { cwd: project.cwd, items, expiresAt: now + CACHE_TTL_MS };
   return NextResponse.json({ items });
+}
+
+/** PATCH { cwd, filePath, kind, date, time? } — edit a Vault deadline/schedule date field. */
+export async function PATCH(req: Request) {
+  try {
+    const body = await req.json() as {
+      cwd?: string;
+      filePath?: string;
+      kind?: "deadline" | "schedule";
+      date?: string;
+      time?: string;
+    };
+    const project = getProjectStore(body.cwd);
+    if (!isProjectStore(project)) return project.response;
+    if (!body.filePath || (body.kind !== "deadline" && body.kind !== "schedule") || !isValidDate(body.date)) {
+      return NextResponse.json({ error: "filePath, kind and valid date required" }, { status: 400 });
+    }
+    if (body.kind === "schedule" && (!body.time || !/^\d{2}:\d{2}$/.test(body.time))) {
+      return NextResponse.json({ error: "valid schedule time required" }, { status: 400 });
+    }
+    updateVaultItemDate(project.cwd, body.filePath, body.kind, body.date, body.time);
+    if (globalThis.__mjuVaultItemsCache?.cwd === project.cwd) globalThis.__mjuVaultItemsCache = undefined;
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
+  }
 }
