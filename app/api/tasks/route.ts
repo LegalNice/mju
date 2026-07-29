@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { writeStore } from "@/lib/mju-store";
 import type { DeliverableType, Task, TaskPriority, TaskStatus } from "@/lib/mju-models";
 import { findCase, getProjectStore, isNonEmptyString, isNonNegativeNumber, isOptionalString, isProjectStore, isValidDate } from "@/lib/mju-route-utils";
+import { createExecutionRecord, ensureVaultTasks, getUnifiedTasks, persistTaskToVault } from "@/lib/mju-task-projection";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,9 +43,14 @@ export async function GET(req: Request) {
   const deadline = params.get("deadline");
   if (status && !validTaskStatus(status)) return NextResponse.json({ error: "invalid status" }, { status: 400 });
 
-  const tasks = project.store.tasks
+  // Legacy store tasks are migrated once into a case-local Markdown task so
+  // every view can subsequently read the same canonical business fields.
+  if (ensureVaultTasks(project.store)) writeStore(project.cwd, project.store);
+  const tasks = getUnifiedTasks(project.cwd, project.store)
     .filter((task) => !caseId || task.caseId === caseId)
-    .filter((task) => !status || task.status === status)
+    // Cancelled Vault tasks remain as an audit record in the Markdown file but
+    // are not active Mju tasks unless an explicit status filter asks for them.
+    .filter((task) => status ? task.status === status : task.status !== "取消")
     .filter((task) => !deadline || task.deadline?.slice(0, 10) === deadline)
     .sort(byDeadline);
   return NextResponse.json({ tasks });
@@ -94,9 +100,10 @@ export async function POST(req: Request) {
       createdAt: now,
       completedAt: status === "完成" ? now : undefined,
     };
-    project.store.tasks.push(task);
+    const persisted = persistTaskToVault(project.store, task);
+    project.store.tasks.push(persisted);
     writeStore(project.cwd, project.store);
-    return NextResponse.json({ success: true, task });
+    return NextResponse.json({ success: true, task: { ...persisted, source: "vault" } });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
@@ -108,9 +115,18 @@ export async function PATCH(req: Request) {
     const project = getProjectStore(body.cwd);
     if (!isProjectStore(project)) return project.response;
     if (!isNonEmptyString(body.id)) return NextResponse.json({ error: "id required" }, { status: 400 });
-    const index = project.store.tasks.findIndex((task) => task.id === body.id);
-    if (index < 0) return NextResponse.json({ error: "task not found" }, { status: 404 });
-    const current = project.store.tasks[index];
+    const migrated = ensureVaultTasks(project.store);
+    const unified = getUnifiedTasks(project.cwd, project.store);
+    const current = unified.find((task) => task.id === body.id);
+    if (!current) return NextResponse.json({ error: "task not found" }, { status: 404 });
+    let index = project.store.tasks.findIndex((task) => task.id === body.id);
+    if (index < 0) {
+      // A hand-authored Vault task becomes a Mju task only when it needs
+      // execution metadata (session/fork/workflow). Its business fields stay
+      // in the original Markdown document.
+      project.store.tasks.push(createExecutionRecord(current));
+      index = project.store.tasks.length - 1;
+    }
     const next: Task = { ...current };
 
     if (!isOptionalString(body.detail) || !isOptionalString(body.deliverablePath)) return NextResponse.json({ error: "detail and deliverablePath must be strings" }, { status: 400 });
@@ -162,9 +178,10 @@ export async function PATCH(req: Request) {
       next.relatedFiles = body.relatedFiles.map((path) => path.trim());
     }
 
-    project.store.tasks[index] = next;
+    const persisted = persistTaskToVault(project.store, next);
+    project.store.tasks[index] = persisted;
     writeStore(project.cwd, project.store);
-    return NextResponse.json({ success: true, task: next });
+    return NextResponse.json({ success: true, task: { ...persisted, source: "vault" }, migrated });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
@@ -176,9 +193,19 @@ export async function DELETE(req: Request) {
   if (!isProjectStore(project)) return project.response;
   const id = params.get("id");
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
+  ensureVaultTasks(project.store);
+  const current = getUnifiedTasks(project.cwd, project.store).find((task) => task.id === id);
+  if (!current) return NextResponse.json({ error: "task not found" }, { status: 404 });
+  // Vault files are legal work records. Deleting in Mju means cancellation,
+  // not irreversible removal of the user's underlying Markdown document.
+  const cancelled = persistTaskToVault(project.store, {
+    ...current,
+    status: "取消",
+    completedAt: new Date().toISOString(),
+  });
   const index = project.store.tasks.findIndex((task) => task.id === id);
-  if (index < 0) return NextResponse.json({ error: "task not found" }, { status: 404 });
-  project.store.tasks.splice(index, 1);
+  if (index >= 0) project.store.tasks[index] = cancelled;
+  else project.store.tasks.push(createExecutionRecord(cancelled));
   writeStore(project.cwd, project.store);
   return NextResponse.json({ success: true });
 }

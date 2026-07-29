@@ -118,8 +118,8 @@ function CenteredNote({ text }: { text: string }) {
 }
 
 /**
- * /dates 全局日程与期限：聚合当前项目所有案件的任务（deadline）、
- * 期限（deadlines）与日程（schedules），列表 / 周 / 月 三种视图切换。
+ * /dates 全局日程与期限：任务来自统一任务投影（Vault 为主数据），期限与
+ * 日程同时兼容 Mju store 和 Vault Markdown，列表 / 周 / 月三种视图切换。
  */
 export function DatesView() {
   const [project, setProject] = useState<{ cwd: string; caseId?: string } | null>(null);
@@ -270,7 +270,7 @@ export function DatesView() {
         caseType: info.type,
         overdue: date < today,
         taskId: t.id,
-        source: "store",
+        source: t.source ?? "store",
       });
     }
     for (const d of deadlines) {
@@ -308,6 +308,8 @@ export function DatesView() {
       });
     }
     for (const v of vaultItems) {
+      // Vault task 已由 /api/tasks 的统一投影提供，避免 Dates 出现两张同一任务。
+      if (v.kind === "task") continue;
       const date = v.date.slice(0, 10);
       const c = v.caseId ? caseMap.get(v.caseId) : undefined;
       out.push({
@@ -328,11 +330,9 @@ export function DatesView() {
   }, [cases, tasks, deadlines, schedules, vaultItems, today]);
 
   const itemHref = (item: DateItem): string =>
-    item.source === "vault"
-      ? `/board/${item.caseId}?cwd=${encodeURIComponent(cwd)}`
-      : item.kind === "task"
-        ? `/task/${item.taskId}?cwd=${encodeURIComponent(cwd)}`
-        : `/board/${item.caseId}?cwd=${encodeURIComponent(cwd)}`;
+    item.kind === "task" && item.taskId
+      ? `/task/${item.taskId}?cwd=${encodeURIComponent(cwd)}`
+      : `/board/${item.caseId}?cwd=${encodeURIComponent(cwd)}`;
 
   const itemKey = (item: DateItem): string => `${item.kind}-${item.id}`;
 

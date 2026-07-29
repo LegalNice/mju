@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -9,7 +9,7 @@ import { createJiti } from "jiti";
 process.env.MJU_HOME = mkdtempSync(join(tmpdir(), "mju-home-"));
 
 const jiti = createJiti(import.meta.url, { alias: { "@": process.cwd() } });
-const { initStore, readStore, findTaskBySessionId } = await jiti.import("../../lib/mju-store.ts");
+const { initStore, readStore, writeStore, findTaskBySessionId } = await jiti.import("../../lib/mju-store.ts");
 const casesRoute = await jiti.import("./cases/route.ts");
 const tasksRoute = await jiti.import("./tasks/route.ts");
 const deadlinesRoute = await jiti.import("./deadlines/route.ts");
@@ -40,10 +40,10 @@ function makeProject(t) {
   return cwd;
 }
 
-async function createCase(cwd) {
+async function createCase(cwd, title = "测试案件") {
   const result = await call(casesRoute.POST, "/api/cases", {
     method: "POST",
-    body: { cwd, title: "测试案件", type: "litigation" },
+    body: { cwd, title, type: "litigation" },
   });
   assert.equal(result.status, 200);
   return result.body.case;
@@ -86,6 +86,83 @@ test("runs task CRUD with strict validation and persisted completion state", asy
   const deleted = await call(tasksRoute.DELETE, "/api/tasks", { method: "DELETE", query: { cwd, id: created.body.task.id } });
   assert.equal(deleted.status, 200);
   assert.equal((await call(tasksRoute.GET, "/api/tasks", { query: { cwd } })).body.tasks.length, 0);
+});
+
+test("projects Vault tasks into Mju and writes Mju task updates back to the source document", async (t) => {
+  const cwd = makeProject(t);
+  const caseItem = await createCase(cwd);
+  const taskDir = join(caseItem.vaultPath, "任务");
+  mkdirSync(taskDir, { recursive: true });
+  const vaultTaskPath = join(taskDir, "核对证据清单.md");
+  writeFileSync(vaultTaskPath, [
+    "---",
+    "事项类型: 任务",
+    "状态: 待办",
+    "截止日期: 2026-08-15",
+    "描述: 对照原件核对证据编号",
+    "---",
+    "",
+    "# 核对证据清单",
+  ].join("\n"), "utf8");
+
+  const listed = await call(tasksRoute.GET, "/api/tasks", { query: { cwd, caseId: caseItem.id } });
+  assert.equal(listed.status, 200);
+  const vaultTask = listed.body.tasks.find((task) => task.title === "核对证据清单");
+  assert.ok(vaultTask, "hand-authored Vault task should appear in the shared task list");
+  assert.equal(vaultTask.source, "vault");
+  assert.equal(vaultTask.status, "待办");
+
+  const patched = await call(tasksRoute.PATCH, "/api/tasks", {
+    method: "PATCH",
+    body: { cwd, id: vaultTask.id, status: "进行中", sessionId: "vault-session-1" },
+  });
+  assert.equal(patched.status, 200);
+  assert.equal(patched.body.task.sessionId, "vault-session-1");
+  const source = readFileSync(vaultTaskPath, "utf8");
+  assert.match(source, /状态: 进行中/);
+  assert.match(source, /mju任务ID:/);
+  assert.equal(readStore(cwd)?.tasks[0].sessionId, "vault-session-1");
+
+  const otherCase = await createCase(cwd, "转移案件");
+  const reassigned = await call(tasksRoute.PATCH, "/api/tasks", {
+    method: "PATCH",
+    body: { cwd, id: vaultTask.id, caseId: otherCase.id },
+  });
+  assert.equal(reassigned.status, 200);
+  assert.ok(reassigned.body.task.vaultPath.startsWith(`${otherCase.vaultPath}/任务/`));
+  assert.equal(existsSync(vaultTaskPath), false, "reassignment should move the canonical task file");
+
+  const created = await call(tasksRoute.POST, "/api/tasks", {
+    method: "POST",
+    body: { cwd, caseId: caseItem.id, title: "Mju 新建任务", assignee: "auto", deadline: "2026-08-18" },
+  });
+  assert.equal(created.status, 200);
+  assert.ok(created.body.task.vaultPath);
+  assert.ok(existsSync(created.body.task.vaultPath), "Mju task should be materialized in the case task folder");
+  assert.match(readFileSync(created.body.task.vaultPath, "utf8"), /事项类型: 任务/);
+});
+
+test("migrates a legacy store-only task into its canonical Vault task document on first read", async (t) => {
+  const cwd = makeProject(t);
+  const caseItem = await createCase(cwd);
+  const store = readStore(cwd);
+  assert.ok(store);
+  store.tasks.push({
+    id: "legacy-task-1",
+    caseId: caseItem.id,
+    title: "历史任务",
+    detail: "旧版 store 中的任务",
+    assignee: "auto",
+    status: "进行中",
+    createdAt: "2026-07-29T00:00:00.000Z",
+  });
+  writeStore(cwd, store);
+
+  const listed = await call(tasksRoute.GET, "/api/tasks", { query: { cwd } });
+  assert.equal(listed.status, 200);
+  assert.equal(listed.body.tasks[0].source, "vault");
+  const migrated = readStore(cwd)?.tasks.find((task) => task.id === "legacy-task-1");
+  assert.ok(migrated?.vaultPath && existsSync(migrated.vaultPath));
 });
 
 test("runs deadline and schedule CRUD without accepting invalid calendar values", async (t) => {
