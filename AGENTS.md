@@ -3,7 +3,7 @@
 ## Quick Start
 
 ```bash
-npm run dev   # port 30142
+npm run dev   # port 30143 (development/test)
 ```
 
 Typecheck: `node_modules/.bin/tsc --noEmit`  
@@ -25,7 +25,7 @@ git switch -c codex/<short-task-name>
 # Install only on the first run or after dependency changes.
 npm install
 
-# Start the local development server, then open http://localhost:30142.
+# Start the local development server, then open http://localhost:30143.
 npm run dev
 ```
 
