@@ -1,0 +1,72 @@
+name: 发布版本
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "要发布的版本号，例如 1.7.5"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  prepare-tag:
+    name: 核对版本并创建标签
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - id: release
+        name: 验证发布内容
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "版本号必须为 x.y.z，例如 1.7.5" >&2
+            exit 1
+          fi
+
+          PACKAGE_VERSION="$(node -p 'require("./package.json").version')"
+          if [[ "$PACKAGE_VERSION" != "$VERSION" ]]; then
+            echo "package.json 为 $PACKAGE_VERSION，与输入的 $VERSION 不一致" >&2
+            exit 1
+          fi
+
+          if ! grep -Fq "## $VERSION " CHANGELOG.md; then
+            echo "CHANGELOG.md 缺少 $VERSION 的更新记录" >&2
+            exit 1
+          fi
+
+          TAG="v$VERSION"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "标签 $TAG 已存在，不能重复发布" >&2
+            exit 1
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: 创建并推送发布标签
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+
+  publish:
+    name: 发布 npm 并生成 Release
+    needs: prepare-tag
+    uses: ./.github/workflows/publish.yml
+    with:
+      ref: refs/tags/${{ needs.prepare-tag.outputs.tag }}
+      tag: ${{ needs.prepare-tag.outputs.tag }}
+    secrets: inherit

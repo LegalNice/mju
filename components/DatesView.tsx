@@ -6,6 +6,7 @@ import type { CSSProperties } from "react";
 import type { Case, Deadline, Schedule, Task } from "@/lib/mju-models";
 import type { VaultItem } from "@/lib/mju-vault-items";
 import { AppNav } from "./AppNav";
+import { useI18n } from "./I18nProvider";
 
 const MICRO: CSSProperties = {
   fontSize: 10,
@@ -118,10 +119,11 @@ function CenteredNote({ text }: { text: string }) {
 }
 
 /**
- * /dates 全局日程与期限：聚合当前项目所有案件的任务（deadline）、
- * 期限（deadlines）与日程（schedules），列表 / 周 / 月 三种视图切换。
+ * /dates 全局日程与期限：任务来自统一任务投影（Vault 为主数据），期限与
+ * 日程同时兼容 Mju store 和 Vault Markdown，列表 / 周 / 月三种视图切换。
  */
 export function DatesView() {
+  const { text: tr } = useI18n();
   const [project, setProject] = useState<{ cwd: string; caseId?: string } | null>(null);
   const [resolved, setResolved] = useState<"pending" | "ok" | "empty">("pending");
 
@@ -270,7 +272,7 @@ export function DatesView() {
         caseType: info.type,
         overdue: date < today,
         taskId: t.id,
-        source: "store",
+        source: t.source ?? "store",
       });
     }
     for (const d of deadlines) {
@@ -308,6 +310,8 @@ export function DatesView() {
       });
     }
     for (const v of vaultItems) {
+      // Vault task 已由 /api/tasks 的统一投影提供，避免 Dates 出现两张同一任务。
+      if (v.kind === "task") continue;
       const date = v.date.slice(0, 10);
       const c = v.caseId ? caseMap.get(v.caseId) : undefined;
       out.push({
@@ -328,11 +332,9 @@ export function DatesView() {
   }, [cases, tasks, deadlines, schedules, vaultItems, today]);
 
   const itemHref = (item: DateItem): string =>
-    item.source === "vault"
-      ? `/board/${item.caseId}?cwd=${encodeURIComponent(cwd)}`
-      : item.kind === "task"
-        ? `/task/${item.taskId}?cwd=${encodeURIComponent(cwd)}`
-        : `/board/${item.caseId}?cwd=${encodeURIComponent(cwd)}`;
+    item.kind === "task" && item.taskId
+      ? `/task/${item.taskId}?cwd=${encodeURIComponent(cwd)}`
+      : `/board/${item.caseId}?cwd=${encodeURIComponent(cwd)}`;
 
   const itemKey = (item: DateItem): string => `${item.kind}-${item.id}`;
 
@@ -435,10 +437,10 @@ export function DatesView() {
           gap: 14,
         }}
       >
-        <span style={{ ...MICRO, color: "var(--text-dim)" }}>Dates</span>
-        <span style={{ fontSize: 20, fontWeight: 700 }}>暂无项目</span>
+        <span style={{ ...MICRO, color: "var(--text-dim)" }}>{tr("日程", "Dates")}</span>
+        <span style={{ fontSize: 20, fontWeight: 700 }}>{tr("暂无项目", "No project selected")}</span>
         <Link href="/" style={{ fontSize: 12, color: "var(--text-muted)" }}>
-          返回首页发起任务 →
+          {tr("返回首页发起任务", "Start a task from Home")} →
         </Link>
       </div>,
     );
@@ -446,12 +448,12 @@ export function DatesView() {
   if (error) {
     return shell(
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <span style={{ fontSize: 12, color: "var(--accent)" }}>加载失败</span>
+        <span style={{ fontSize: 12, color: "var(--accent)" }}>{tr("加载失败", "Unable to load")}</span>
       </div>,
     );
   }
   if (resolved === "pending" || !cases || !tasks || !deadlines || !schedules || !vaultItems) {
-    return shell(<CenteredNote text="加载中…" />);
+    return shell(<CenteredNote text={tr("加载中…", "Loading…")} />);
   }
 
   const navButton: CSSProperties = {
@@ -477,14 +479,14 @@ export function DatesView() {
           }}
         >
           <h1 style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.01em", margin: 0 }}>
-            全局日程与期限
+            {tr("全局日程与期限", "Dates and deadlines")}
           </h1>
           <div style={{ display: "flex", border: "1px solid var(--border)", borderRadius: 2 }}>
             {(
               [
-                ["list", "列表"],
-                ["week", "周"],
-                ["month", "月"],
+                ["list", tr("列表", "List")],
+                ["week", tr("周", "Week")],
+                ["month", tr("月", "Month")],
               ] as Array<[ViewMode, string]>
             ).map(([v, label]) => (
               <button
@@ -516,11 +518,11 @@ export function DatesView() {
         <div style={{ ...MICRO, color: "var(--text-dim)", display: "flex", gap: 14, marginBottom: 20 }}>
           {(Object.keys(KIND_LABEL) as Array<DateItem["kind"]>).map((kind) => (
             <span key={kind}>
-              <span style={{ color: KIND_TICK[kind] }}>■</span> {KIND_LABEL[kind]}
+              <span style={{ color: KIND_TICK[kind] }}>■</span> {tr(KIND_LABEL[kind], kind === "task" ? "Task" : kind === "deadline" ? "Deadline" : "Schedule")}
             </span>
           ))}
           <span>
-            <span style={{ color: "var(--text-dim)" }}>□</span> 文件库
+            <span style={{ color: "var(--text-dim)" }}>□</span> {tr("文件库", "Vault")}
           </span>
         </div>
 
@@ -528,7 +530,7 @@ export function DatesView() {
         {view === "list" &&
           (dayGroups.length === 0 ? (
             <div style={{ ...MICRO, color: "var(--text-dim)", padding: "40px 0", textAlign: "center" }}>
-              暂无日程与期限
+              {tr("暂无日程与期限", "No dates or deadlines")}
             </div>
           ) : (
             <>
@@ -546,9 +548,9 @@ export function DatesView() {
                     }}
                   >
                     <span>
-                      {date === today ? `今天 · ${formatMD(date)}` : `${formatMD(date)} · ${weekdayLabel(date)}`}
+                      {date === today ? `${tr("今天", "Today")} · ${formatMD(date)}` : `${formatMD(date)} · ${weekdayLabel(date)}`}
                     </span>
-                    <span>{groupItems.length} 项</span>
+                    <span>{groupItems.length} {tr("项", "items")}</span>
                   </h2>
                   {groupItems.map((item) => {
                     const key = itemKey(item);
@@ -574,7 +576,7 @@ export function DatesView() {
                             fontWeight: item.overdue ? 700 : 400,
                           }}
                         >
-                          {item.overdue ? `逾期 ${overdueDays} 天` : (item.time ?? "全天")}
+                          {item.overdue ? tr(`逾期 ${overdueDays} 天`, `${overdueDays} days overdue`) : (item.time ?? tr("全天", "All day"))}
                         </span>
                         <span
                           style={{

@@ -61,6 +61,10 @@ export interface Task {
   workflowId?: string;
   sessionId?: string;              // 绑定的 pi 会话 id（进入页发起的任务）
   originPrompt?: string;           // 用户原始指令（任务子页左栏展示）
+  /** Vault 任务 Markdown 的绝对路径。任务正文与业务状态以该文件为准。 */
+  vaultPath?: string;
+  /** 仅用于 API 返回的统一任务投影，不作为独立的第二份业务数据。 */
+  source?: "store" | "vault";
   createdAt: string;
   completedAt?: string;
 }

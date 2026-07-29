@@ -1,7 +1,8 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { load as parseYaml } from "js-yaml";
-import type { Case, MjuStore } from "./mju-models";
+import { dump as dumpYaml, load as parseYaml } from "js-yaml";
+import type { Case, MjuStore, Task, TaskPriority, TaskStatus } from "./mju-models";
 
 /**
  * Vault-native dated items. The user's Obsidian convention (documented by the
@@ -21,6 +22,15 @@ export interface VaultItem {
   caseId?: string;
   filePath: string;
   source: "vault";
+}
+
+/**
+ * A Vault task normalized into Mju's task shape. It deliberately carries the
+ * source file path: that file, not the Mju store, owns the business fields.
+ */
+export interface VaultTask extends Task {
+  source: "vault";
+  vaultPath: string;
 }
 
 const ITEM_DIRS = new Map<string, VaultItem["kind"]>([
@@ -59,6 +69,30 @@ function cleanTitle(filename: string): string {
     .trim();
 }
 
+function taskIdForPath(filePath: string): string {
+  return `vault-${createHash("sha256").update(filePath).digest("hex").slice(0, 24)}`;
+}
+
+function taskStatus(value: unknown): TaskStatus {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if (normalized === "进行中" || normalized === "处理中") return "进行中";
+  if (normalized === "完成" || normalized === "已完成") return "完成";
+  if (normalized === "取消" || normalized === "已取消") return "取消";
+  return "待办";
+}
+
+function taskPriority(value: unknown): TaskPriority | undefined {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (normalized === "high" || normalized === "高") return "high";
+  if (normalized === "medium" || normalized === "中") return "medium";
+  if (normalized === "low" || normalized === "低") return "low";
+  return undefined;
+}
+
+function taskText(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
 function frontmatterOf(filePath: string): Record<string, unknown> | null {
   let raw: string;
   try {
@@ -74,6 +108,25 @@ function frontmatterOf(filePath: string): Record<string, unknown> | null {
     return parsed && typeof parsed === "object" && !Array.isArray(parsed)
       ? (parsed as Record<string, unknown>)
       : null;
+  } catch {
+    return null;
+  }
+}
+
+function rawWithFrontmatter(filePath: string): { frontmatter: Record<string, unknown>; body: string } | null {
+  let raw: string;
+  try {
+    raw = readFileSync(filePath, "utf8");
+  } catch {
+    return null;
+  }
+  if (!raw.startsWith("---")) return null;
+  const end = raw.indexOf("\n---", 3);
+  if (end < 0) return null;
+  try {
+    const parsed = parseYaml(raw.slice(3, end));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    return { frontmatter: parsed as Record<string, unknown>, body: raw.slice(end + 4).replace(/^\n+/, "") };
   } catch {
     return null;
   }
@@ -113,6 +166,98 @@ function caseForPath(store: MjuStore, filePath: string): Case | undefined {
   return store.cases
     .filter((c) => filePath.startsWith(c.vaultPath + "/"))
     .sort((a, b) => b.vaultPath.length - a.vaultPath.length)[0];
+}
+
+/** Scan every Vault task, including undated and completed tasks for Board/detail. */
+export function scanVaultTasks(cwd: string, store: MjuStore): VaultTask[] {
+  const opsDir = join(cwd, "ops");
+  if (!existsSync(opsDir)) return [];
+  const files: string[] = [];
+  collectItemFiles(opsDir, 0, files);
+
+  const tasks: VaultTask[] = [];
+  for (const vaultPath of files) {
+    if (basename(join(vaultPath, "..")) !== "任务") continue;
+    const fm = frontmatterOf(vaultPath);
+    if (!fm) continue;
+    const typeRaw = typeof fm["事项类型"] === "string" ? fm["事项类型"] : "任务";
+    if (typeRaw !== "任务") continue;
+    const modifiedAt = (() => {
+      try { return statSync(vaultPath).mtime.toISOString(); } catch { return new Date(0).toISOString(); }
+    })();
+    const deadline = toDateString(fm["截止日期"]) ?? toDateString(fm["开始时间"]) ?? undefined;
+    const completedAt = taskStatus(fm["状态"]) === "完成"
+      ? toDateString(fm["完成时间"]) ?? toDateString(fm["结束时间"]) ?? undefined
+      : undefined;
+    tasks.push({
+      id: taskText(fm["mju任务ID"]) ?? taskIdForPath(vaultPath),
+      caseId: caseForPath(store, vaultPath)?.id ?? "",
+      title: cleanTitle(vaultPath),
+      detail: taskText(fm["描述"]) ?? "",
+      assignee: taskText(fm["负责人"]) ?? taskText(fm["执行人"]) ?? "律师",
+      status: taskStatus(fm["状态"]),
+      priority: taskPriority(fm["优先级"]),
+      deadline,
+      createdAt: toDateString(fm["创建时间"]) ?? toDateString(fm["开始时间"]) ?? modifiedAt,
+      completedAt,
+      source: "vault",
+      vaultPath,
+    });
+  }
+  return tasks;
+}
+
+function safeFilePart(value: string): string {
+  const normalized = value
+    .replace(/[\\/:*?"<>|]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 72);
+  return normalized || "任务";
+}
+
+function atomicWrite(filePath: string, content: string): void {
+  const temporaryPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  writeFileSync(temporaryPath, content, "utf8");
+  renameSync(temporaryPath, filePath);
+}
+
+function taskFrontmatter(task: Task): Record<string, unknown> {
+  const frontmatter: Record<string, unknown> = {
+    "事项类型": "任务",
+    "状态": task.status,
+    "负责人": task.assignee,
+    "mju任务ID": task.id,
+    "创建时间": task.createdAt,
+  };
+  if (task.priority) frontmatter["优先级"] = task.priority;
+  if (task.deadline) frontmatter["截止日期"] = task.deadline;
+  if (task.detail) frontmatter["描述"] = task.detail;
+  if (task.completedAt) frontmatter["完成时间"] = task.completedAt;
+  return frontmatter;
+}
+
+/** Create a new canonical Vault task document for a Mju-originated task. */
+export function createVaultTask(caseItem: Case, task: Task): string {
+  const dir = join(caseItem.vaultPath, "任务");
+  mkdirSync(dir, { recursive: true });
+  const filePath = join(dir, `${safeFilePart(task.title)}-${task.id.slice(0, 8)}.md`);
+  const content = `---\n${dumpYaml(taskFrontmatter(task), { lineWidth: -1 })}---\n\n# ${task.title}\n${task.detail ? `\n${task.detail}\n` : ""}`;
+  atomicWrite(filePath, content);
+  return filePath;
+}
+
+/** Update only Mju-owned task frontmatter fields while retaining the Markdown body. */
+export function writeVaultTask(task: Task, vaultPath: string): void {
+  const existing = rawWithFrontmatter(vaultPath);
+  if (!existing) throw new Error("Vault task file is missing or has invalid frontmatter");
+  const frontmatter = { ...existing.frontmatter, ...taskFrontmatter(task) };
+  if (!task.priority) delete frontmatter["优先级"];
+  if (!task.deadline) delete frontmatter["截止日期"];
+  if (!task.detail) delete frontmatter["描述"];
+  if (!task.completedAt) delete frontmatter["完成时间"];
+  const content = `---\n${dumpYaml(frontmatter, { lineWidth: -1 })}---\n\n${existing.body}`;
+  atomicWrite(vaultPath, content);
 }
 
 /** Scan ops/** for 任务/期限/日程 item files and normalize their frontmatter. */

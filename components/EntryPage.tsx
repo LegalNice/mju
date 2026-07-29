@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from "re
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Case as MjuCase, CaseType, Deadline, Schedule, Task } from "@/lib/mju-models";
+import type { VaultItem } from "@/lib/mju-vault-items";
 import { ModelsConfig } from "@/components/ModelsConfig";
 import { SkillsConfig } from "@/components/SkillsConfig";
 import { SubagentsConfig } from "@/components/SubagentsConfig";
@@ -12,6 +13,7 @@ import { ThemeConfig } from "@/components/ThemeConfig";
 import { MineruConfig } from "@/components/MineruConfig";
 import { ChangelogConfig } from "@/components/ChangelogConfig";
 import { Wordmark } from "@/components/Wordmark";
+import { LanguageToggle, useI18n } from "@/components/I18nProvider";
 
 const LS_CWD = "mju-entry-cwd";
 const LS_LAST_CASE = "mju-last-case";
@@ -60,6 +62,8 @@ interface AgendaItem {
   caseTitle: string;
   taskId?: string;
   overdue: boolean;
+  /** 已在办但尚未设置日期的任务，不能因此从首页消失。 */
+  undated?: boolean;
 }
 
 function localDateString(d: Date): string {
@@ -78,14 +82,16 @@ function overdueDays(date: string, today: string): number {
 }
 
 /**
- * Merge the project's open work into one sorted list: tasks with a deadline
- * (not 完成/取消), deadlines not done, schedules still in the future.
- * Overdue entries sort first, then ascending by date; capped at 5 rows.
+ * Merge the project's open work into one sorted list. Tasks come from the
+ * unified task projection (Vault first); Vault deadlines/schedules are added
+ * here as well. Undated active tasks follow the dated work rather than being
+ * silently dropped from the entry page.
  */
 function buildAgenda(
   tasks: Task[],
   deadlines: Deadline[],
   schedules: Schedule[],
+  vaultItems: VaultItem[],
   caseTitles: Map<string, string>,
 ): AgendaItem[] {
   const today = localDateString(new Date());
@@ -122,8 +128,36 @@ function buildAgenda(
     });
   }
 
+  for (const item of vaultItems) {
+    if (item.kind === "task" || !item.caseId) continue;
+    items.push({
+      date: item.date,
+      time: item.time,
+      title: item.title,
+      kind: item.kind,
+      caseId: item.caseId,
+      caseTitle: titleOf(item.caseId),
+      overdue: item.date < today,
+    });
+  }
+
+  for (const t of tasks) {
+    if (t.deadline || t.status === "完成" || t.status === "取消") continue;
+    items.push({
+      date: "",
+      title: t.title,
+      kind: "task",
+      caseId: t.caseId,
+      caseTitle: titleOf(t.caseId),
+      taskId: t.id,
+      overdue: false,
+      undated: true,
+    });
+  }
+
   items.sort((a, b) =>
     Number(b.overdue) - Number(a.overdue)
+    || Number(a.undated) - Number(b.undated)
     || a.date.localeCompare(b.date)
     || (a.time ?? "").localeCompare(b.time ?? ""));
   return items.slice(0, 5);
@@ -404,6 +438,7 @@ function InitProjectForm({ onInitialized }: { onInitialized: (p: ProjectSummary)
 }
 
 export function EntryPage() {
+  const { text: tr } = useI18n();
   const router = useRouter();
 
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
@@ -550,12 +585,13 @@ export function EntryPage() {
       list<Task>("/api/tasks", "tasks"),
       list<Deadline>("/api/deadlines", "deadlines"),
       list<Schedule>("/api/schedules", "schedules"),
+      list<VaultItem>("/api/vault-items", "items"),
     ])
-      .then(([caseList, tasks, deadlines, schedules]) => {
+      .then(([caseList, tasks, deadlines, schedules, vaultItems]) => {
         if (cancelled) return;
         setCases(caseList);
         const titles = new Map(caseList.map((c) => [c.id, c.title]));
-        setAgenda(buildAgenda(tasks, deadlines, schedules, titles));
+        setAgenda(buildAgenda(tasks, deadlines, schedules, vaultItems, titles));
       })
       .catch(() => {
         if (cancelled) return;
@@ -779,13 +815,13 @@ export function EntryPage() {
   const todayStr = localDateString(new Date());
 
   const configButtons: { id: ConfigPanel; label: string; needsProject?: boolean }[] = [
-    { id: "models", label: "MODELS" },
-    { id: "skills", label: "SKILLS", needsProject: true },
-    { id: "agents", label: "AGENTS" },
-    { id: "plugins", label: "PLUGINS", needsProject: true },
+    { id: "models", label: tr("模型", "MODELS") },
+    { id: "skills", label: tr("技能", "SKILLS"), needsProject: true },
+    { id: "agents", label: tr("智能体", "AGENTS") },
+    { id: "plugins", label: tr("插件", "PLUGINS"), needsProject: true },
     { id: "mineru", label: "MINERU" },
-    { id: "theme", label: "THEME" },
-    { id: "changelog", label: "CHANGELOG" },
+    { id: "theme", label: tr("外观", "THEME") },
+    { id: "changelog", label: tr("更新日志", "CHANGELOG") },
   ];
 
   const launch = async () => {
@@ -902,12 +938,13 @@ export function EntryPage() {
       `}</style>
 
       <div style={{ width: "min(640px, 92vw)", display: "flex", flexDirection: "column" }}>
-        <div style={{ textAlign: "center" }}>
+        <div style={{ textAlign: "center", position: "relative" }}>
+          <div style={{ position: "absolute", right: 0, top: 0 }}><LanguageToggle /></div>
           <div style={{ display: "flex", justifyContent: "center" }}>
             <Wordmark fontSize={34} />
           </div>
           <div style={{ ...micro, color: "var(--text-dim)", marginTop: 10 }}>
-            Your tough but fair legal assistant
+            {tr("冷静、可靠的法律协作助手", "Your tough but fair legal assistant")}
           </div>
         </div>
 
@@ -1818,7 +1855,9 @@ export function EntryPage() {
                           whiteSpace: "nowrap",
                         }}
                       >
-                        {item.overdue
+                        {item.undated
+                          ? <span style={{ color: "var(--text-muted)" }}>进行中</span>
+                          : item.overdue
                           ? (
                             <span style={{ color: "var(--accent)", fontWeight: 700 }}>
                               逾期 {overdueDays(item.date, todayStr)} 天

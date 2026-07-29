@@ -172,3 +172,7 @@ npm run dev    # http://localhost:30143（开发测试端口）
 ```
 
 检查：`npm run typecheck`、`npm run lint`、`npm run test:backend`。开发时不要跑 `next build`。完整文件地图和设计决策见 [AGENTS.md](./AGENTS.md)。
+
+### 发布 npm
+
+合并版本变更后，在 GitHub 仓库的 **Actions** 中运行“**发布版本**”，输入与 `package.json` 和 `CHANGELOG.md` 一致的版本号（例如 `1.7.5`）。工作流会校验版本和更新日志、创建 `v1.7.5` 标签、运行完整校验、发布 npm，并自动创建 GitHub Release。

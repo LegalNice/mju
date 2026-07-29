@@ -7,6 +7,7 @@ import type { CSSProperties } from "react";
 import type { Case, Deliverable, DeliverableStatus, DeliverableType, Task, TaskPriority, TaskStatus } from "@/lib/mju-models";
 import type { WorkflowDefinition } from "@/lib/workflows";
 import { AppNav } from "./AppNav";
+import { useI18n } from "./I18nProvider";
 
 const MICRO: CSSProperties = {
   fontSize: 10,
@@ -290,6 +291,7 @@ function TinyButton({
 }
 
 export function CaseBoardView({ caseId }: { caseId: string }) {
+  const { text: tr } = useI18n();
   const router = useRouter();
   const searchParams = useSearchParams();
   const cwd = searchParams.get("cwd") ?? "";
@@ -738,8 +740,8 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
     </div>
   );
 
-  if (error) return shell(<CenteredNote text="加载失败" />);
-  if (!cases || !tasks) return shell(<CenteredNote text="加载中…" />);
+  if (error) return shell(<CenteredNote text={tr("加载失败", "Unable to load")} />);
+  if (!cases || !tasks) return shell(<CenteredNote text={tr("加载中…", "Loading…")} />);
   if (!currentCase) {
     return shell(
       <div
@@ -752,9 +754,9 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
           gap: 14,
         }}
       >
-        <span style={{ ...MICRO, color: "var(--text-dim)" }}>案件不存在</span>
+        <span style={{ ...MICRO, color: "var(--text-dim)" }}>{tr("案件不存在", "Case not found")}</span>
         <Link href="/board" style={{ fontSize: 12, color: "var(--text-muted)" }}>
-          返回 Board
+          {tr("返回案件列表", "Back to cases")}
         </Link>
       </div>,
     );
@@ -829,7 +831,7 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
                 >
                   <span>{c.title}</span>
                   <span style={{ fontSize: 11, color: "var(--text-dim)" }}>
-                    {taskCountByCase.get(c.id) ?? 0} 任务
+                    {taskCountByCase.get(c.id) ?? 0} {tr("任务", "tasks")}
                   </span>
                 </button>
               ))}
@@ -838,7 +840,7 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
         </div>
         <div style={{ display: "flex", alignItems: "baseline", gap: 16 }}>
           <TextButton onClick={() => fileInputRef.current?.click()}>
-            {importingMaterials ? "导入中…" : "导入材料"}
+            {importingMaterials ? tr("导入中…", "Importing…") : tr("导入材料", "Import materials")}
           </TextButton>
           <input
             ref={fileInputRef}
@@ -850,7 +852,7 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
           />
           {workflows && workflows.length > 0 && (
             <div ref={wfMenuRef} style={{ position: "relative" }}>
-              <TextButton onClick={() => setWfMenuOpen((open) => !open)}>启动工作流 ▾</TextButton>
+              <TextButton onClick={() => setWfMenuOpen((open) => !open)}>{tr("启动工作流", "Start workflow")} ▾</TextButton>
               {wfMenuOpen && (
                 <div
                   style={{
@@ -883,7 +885,7 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
                         <span>{wf.name}</span>
                         {wf.started && (
                           <span style={{ ...MICRO, letterSpacing: "0.06em", color: "var(--text-dim)" }}>
-                            已启动
+                            {tr("已启动", "Started")}
                           </span>
                         )}
                       </span>
@@ -894,7 +896,7 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
             </div>
           )}
           <span style={{ ...MICRO, color: "var(--text-dim)" }}>
-            {CASE_TYPE_LABEL[currentCase.type]} · {currentCase.stage}
+            {tr(CASE_TYPE_LABEL[currentCase.type], currentCase.type === "litigation" ? "Dispute" : currentCase.type === "advisory" ? "Advisory" : "Project")} · {currentCase.stage}
           </span>
         </div>
       </div>
@@ -928,7 +930,7 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
                   margin: 0,
                 }}
               >
-                <span>{status}</span>
+                <span>{tr(status, status === "待办" ? "To do" : status === "进行中" ? "In progress" : "Done")}</span>
                 <span>{columnTasks.length}</span>
               </h2>
               {columnTasks.map((task) => {
@@ -1046,7 +1048,7 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
                           <input
                             autoFocus={reassignCases.total > 8}
                             value={caseQuery}
-                            placeholder="搜索案件…"
+                            placeholder={tr("搜索案件…", "Search cases…")}
                             onChange={(e) => setCaseQuery(e.target.value)}
                             onClick={(e) => e.stopPropagation()}
                             style={{
@@ -1065,7 +1067,7 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
                         <div style={{ maxHeight: 240, overflowY: "auto" }}>
                           {reassignCases.query && reassignCases.filtered.length === 0 && (
                             <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "8px 12px" }}>
-                              无匹配案件
+                              {tr("无匹配案件", "No matching cases")}
                             </div>
                           )}
                           {reassignCases.filtered.map((c) => (
@@ -1106,7 +1108,7 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
                           </div>
                         ) : (
                           <MenuRow micro onClick={() => setConfirmingDelete(true)}>
-                            <span style={{ color: "var(--accent)" }}>删除任务</span>
+                            <span style={{ color: "var(--accent)" }}>{tr("删除任务", "Delete task")}</span>
                           </MenuRow>
                         )}
                         {taskMenuError && (
@@ -1138,7 +1140,7 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
               margin: 0,
             }}
           >
-            <span>交付物</span>
+            <span>{tr("交付物", "Deliverables")}</span>
             <span>{deliverables.length}</span>
           </h2>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 12 }}>

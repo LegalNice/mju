@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Wordmark } from "./Wordmark";
 import { usePathname } from "next/navigation";
+import { LanguageToggle, useI18n } from "./I18nProvider";
 
 /**
  * Shared top navigation for the workbench pages (Board / Dates / task detail).
@@ -10,9 +11,10 @@ import { usePathname } from "next/navigation";
  */
 export function AppNav({ boardHref }: { boardHref?: string }) {
   const pathname = usePathname();
+  const { text } = useI18n();
   const items = [
-    { label: "Board", href: boardHref ?? "/board", match: (p: string) => p.startsWith("/board") || p.startsWith("/task") },
-    { label: "Dates", href: "/dates", match: (p: string) => p.startsWith("/dates") },
+    { label: text("案件", "Cases"), href: boardHref ?? "/board", match: (p: string) => p.startsWith("/board") || p.startsWith("/task") },
+    { label: text("日程", "Dates"), href: "/dates", match: (p: string) => p.startsWith("/dates") },
   ];
   return (
     <header
@@ -30,7 +32,7 @@ export function AppNav({ boardHref }: { boardHref?: string }) {
       <Link href="/" style={{ textDecoration: "none" }}>
         <Wordmark fontSize={15} />
       </Link>
-      <nav style={{ display: "flex", gap: 24 }}>
+      <nav style={{ display: "flex", gap: 20, alignItems: "center" }}>
         {items.map((item) => {
           const on = item.match(pathname);
           return (
@@ -53,6 +55,7 @@ export function AppNav({ boardHref }: { boardHref?: string }) {
             </Link>
           );
         })}
+        <LanguageToggle />
       </nav>
     </header>
   );

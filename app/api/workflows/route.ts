@@ -3,6 +3,7 @@ import { writeStore } from "@/lib/mju-store";
 import { findCase, getProjectStore, isNonEmptyString, isProjectStore } from "@/lib/mju-route-utils";
 import { buildWorkflowTasks, findWorkflow, listWorkflows, startWorkflow, workflowAlreadyStarted } from "@/lib/workflows";
 import type { MjuStore } from "@/lib/mju-models";
+import { persistTaskToVault } from "@/lib/mju-task-projection";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,8 +51,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "workflow already started for this case" }, { status: 409 });
     }
     const { run, tasks } = startWorkflow(project.store, caseItem, workflow);
+    const persistedTasks = tasks.map((task) => {
+      const persisted = persistTaskToVault(project.store, task);
+      const index = project.store.tasks.findIndex((item) => item.id === task.id);
+      if (index >= 0) project.store.tasks[index] = persisted;
+      return { ...persisted, source: "vault" as const };
+    });
     writeStore(project.cwd, project.store);
-    return NextResponse.json({ success: true, run, tasks }, { status: 201 });
+    return NextResponse.json({ success: true, run, tasks: persistedTasks }, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
