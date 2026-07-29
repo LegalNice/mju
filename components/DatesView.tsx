@@ -42,19 +42,16 @@ interface DateItem {
   caseType: Case["type"];
   overdue: boolean;
   taskId?: string;
+  vaultPath?: string;
   source: "store" | "vault";
 }
+
+type ItemFilter = DateItem["kind"] | "vault" | "all";
 
 const KIND_TICK: Record<DateItem["kind"], string> = {
   task: "var(--text-dim)",
   deadline: "var(--accent)",
   schedule: "var(--text)",
-};
-
-const KIND_LABEL: Record<DateItem["kind"], string> = {
-  task: "任务",
-  deadline: "期限",
-  schedule: "日程",
 };
 
 const WEEKDAYS = ["一", "二", "三", "四", "五", "六", "日"];
@@ -118,6 +115,40 @@ function CenteredNote({ text }: { text: string }) {
   );
 }
 
+/** Tasks open their working conversation; deadlines and schedules open the time editor. */
+function DateItemAction({
+  item,
+  href,
+  onEdit,
+  style,
+  children,
+}: {
+  item: DateItem;
+  href: string;
+  onEdit: (item: DateItem) => void;
+  style: CSSProperties;
+  children: React.ReactNode;
+}) {
+  if (item.kind !== "task") {
+    return (
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          onEdit(item);
+        }}
+        style={{ ...style, width: "100%", border: "none", font: "inherit", textAlign: "left", cursor: "pointer" }}
+      >
+        {children}
+      </button>
+    );
+  }
+  if (item.source === "vault" && !item.caseId) {
+    return <div style={{ ...style, cursor: "default" }}>{children}</div>;
+  }
+  return <Link href={href} onClick={(event) => event.stopPropagation()} style={style}>{children}</Link>;
+}
+
 /**
  * /dates 全局日程与期限：任务来自统一任务投影（Vault 为主数据），期限与
  * 日程同时兼容 Mju store 和 Vault Markdown，列表 / 周 / 月三种视图切换。
@@ -139,7 +170,12 @@ export function DatesView() {
   const [weekOffset, setWeekOffset] = useState(0);
   const [monthOffset, setMonthOffset] = useState(0);
   const [anchorDate, setAnchorDate] = useState<string | null>(null);
-  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
+  const [filter, setFilter] = useState<ItemFilter>("all");
+  const [editing, setEditing] = useState<DateItem | null>(null);
+  const [editDate, setEditDate] = useState("");
+  const [editTime, setEditTime] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   // 项目解析：优先 localStorage 记录的上次案件，否则取最近项目的 cwd
   useEffect(() => {
@@ -326,10 +362,16 @@ export function DatesView() {
         caseType: c?.type ?? "litigation",
         overdue: date < today,
         source: "vault",
+        vaultPath: v.filePath,
       });
     }
     return out;
   }, [cases, tasks, deadlines, schedules, vaultItems, today]);
+
+  const visibleItems = useMemo(
+    () => items.filter((item) => filter === "all" || (filter === "vault" ? item.source === "vault" : item.kind === filter)),
+    [filter, items],
+  );
 
   const itemHref = (item: DateItem): string =>
     item.kind === "task" && item.taskId
@@ -342,7 +384,7 @@ export function DatesView() {
   const limitStr = dateString(addDays(parseDate(today), 60));
   const truncated = !expanded && items.some((i) => i.date > limitStr);
   const dayGroups = useMemo(() => {
-    const visible = expanded ? items : items.filter((i) => i.date <= limitStr);
+    const visible = (expanded ? visibleItems : visibleItems.filter((i) => i.date <= limitStr));
     const groups = new Map<string, DateItem[]>();
     for (const item of visible) {
       const key = item.date < today ? today : item.date;
@@ -357,11 +399,11 @@ export function DatesView() {
       });
     }
     return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [items, expanded, today, limitStr]);
+  }, [visibleItems, expanded, today, limitStr]);
 
   const itemsByDate = useMemo(() => {
     const map = new Map<string, DateItem[]>();
-    for (const item of items) {
+    for (const item of visibleItems) {
       const arr = map.get(item.date);
       if (arr) arr.push(item);
       else map.set(item.date, [item]);
@@ -370,7 +412,59 @@ export function DatesView() {
       arr.sort((a, b) => (a.time ?? "99:99").localeCompare(b.time ?? "99:99"));
     }
     return map;
-  }, [items]);
+  }, [visibleItems]);
+
+  const openEditor = (item: DateItem) => {
+    if (item.kind === "task") return;
+    setEditing(item);
+    setEditDate(item.date);
+    setEditTime(item.time ?? "09:00");
+    setEditError(null);
+  };
+
+  const saveDate = async () => {
+    if (!editing || !editDate || (editing.kind === "schedule" && !editTime)) return;
+    setSaving(true);
+    setEditError(null);
+    try {
+      if (editing.source === "vault") {
+        if (!editing.vaultPath) throw new Error("Vault item path is missing");
+        const res = await fetch("/api/vault-items", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cwd, filePath: editing.vaultPath, kind: editing.kind, date: editDate, time: editing.kind === "schedule" ? editTime : undefined }),
+        });
+        if (!res.ok) throw new Error((await res.json() as { error?: string }).error ?? "save failed");
+        setVaultItems((prev) => prev?.map((item) => item.filePath === editing.vaultPath
+          ? { ...item, date: editDate, time: editing.kind === "schedule" ? editTime : undefined }
+          : item) ?? prev);
+      } else if (editing.kind === "deadline") {
+        const res = await fetch("/api/deadlines", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cwd, id: editing.id, date: editDate }),
+        });
+        const data = await res.json() as { deadline?: Deadline; error?: string };
+        if (!res.ok || !data.deadline) throw new Error(data.error ?? "save failed");
+        setDeadlines((prev) => prev?.map((item) => item.id === editing.id ? data.deadline! : item) ?? prev);
+      } else {
+        const datetime = new Date(`${editDate}T${editTime}`).toISOString();
+        const res = await fetch("/api/schedules", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cwd, id: editing.id, datetime }),
+        });
+        const data = await res.json() as { schedule?: Schedule; error?: string };
+        if (!res.ok || !data.schedule) throw new Error(data.error ?? "save failed");
+        setSchedules((prev) => prev?.map((item) => item.id === editing.id ? data.schedule! : item) ?? prev);
+      }
+      setEditing(null);
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : "save failed");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   // 周视图：本周周一 ± weekOffset
   const weekDays = useMemo(() => {
@@ -514,16 +608,38 @@ export function DatesView() {
           </div>
         </div>
 
-        {/* 类别图例 */}
-        <div style={{ ...MICRO, color: "var(--text-dim)", display: "flex", gap: 14, marginBottom: 20 }}>
-          {(Object.keys(KIND_LABEL) as Array<DateItem["kind"]>).map((kind) => (
-            <span key={kind}>
-              <span style={{ color: KIND_TICK[kind] }}>■</span> {tr(KIND_LABEL[kind], kind === "task" ? "Task" : kind === "deadline" ? "Deadline" : "Schedule")}
-            </span>
-          ))}
-          <span>
-            <span style={{ color: "var(--text-dim)" }}>□</span> {tr("文件库", "Vault")}
-          </span>
+        {/* 类型筛选：任务打开对话；期限与日程在原处编辑时间。 */}
+        <div role="tablist" aria-label={tr("日期条目筛选", "Date item filters")} style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 20 }}>
+          {([
+            ["all", tr("全部", "All"), "var(--text-dim)"],
+            ["task", tr("任务", "Task"), KIND_TICK.task],
+            ["deadline", tr("期限", "Deadline"), KIND_TICK.deadline],
+            ["schedule", tr("日程", "Schedule"), KIND_TICK.schedule],
+            ["vault", tr("文件库", "Vault"), "var(--text-dim)"],
+          ] as Array<[ItemFilter, string, string]>).map(([value, label, color]) => {
+            const active = filter === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setFilter(value)}
+                style={{
+                  ...MICRO,
+                  padding: "5px 8px",
+                  border: `1px solid ${active ? color : "var(--border)"}`,
+                  borderRadius: 2,
+                  background: active ? "var(--bg-hover)" : "transparent",
+                  color: active ? "var(--text)" : "var(--text-muted)",
+                  cursor: "pointer",
+                }}
+              >
+                <span style={{ color, marginRight: 5 }}>{value === "vault" ? "□" : value === "all" ? "·" : "■"}</span>
+                {label}
+              </button>
+            );
+          })}
         </div>
 
         {/* ============ 列表（时间线） ============ */}
@@ -582,8 +698,7 @@ export function DatesView() {
                           style={{
                             fontWeight: 600,
                             fontSize: 13,
-                            color: !isVault && hoveredKey === key ? "var(--accent)" : "var(--text)",
-                            transition: "color .12s",
+                            color: "var(--text)",
                           }}
                         >
                           {isVault && <span style={VAULT_MARK}>文</span>}
@@ -604,21 +719,10 @@ export function DatesView() {
                         </span>
                       </>
                     );
-                    // 无归属案件的 vault 条目无处可去，渲染为不可点击
-                    return isVault && !item.caseId ? (
-                      <div key={key} style={{ ...rowStyle, cursor: "default" }}>
+                    return (
+                      <DateItemAction key={key} item={item} href={itemHref(item)} onEdit={openEditor} style={rowStyle}>
                         {row}
-                      </div>
-                    ) : (
-                      <Link
-                        key={key}
-                        href={itemHref(item)}
-                        onMouseEnter={() => setHoveredKey(key)}
-                        onMouseLeave={() => setHoveredKey(null)}
-                        style={rowStyle}
-                      >
-                        {row}
-                      </Link>
+                      </DateItemAction>
                     );
                   })}
                 </section>
@@ -715,15 +819,10 @@ export function DatesView() {
                           </div>
                         </>
                       );
-                      // 无归属案件的 vault 条目无处可去，渲染为不可点击
-                      return isVault && !item.caseId ? (
-                        <div key={itemKey(item)} style={{ ...cardStyle, cursor: "default" }}>
+                      return (
+                        <DateItemAction key={itemKey(item)} item={item} href={itemHref(item)} onEdit={openEditor} style={cardStyle}>
                           {card}
-                        </div>
-                      ) : (
-                        <Link key={itemKey(item)} href={itemHref(item)} style={cardStyle}>
-                          {card}
-                        </Link>
+                        </DateItemAction>
                       );
                     })}
                   </section>
@@ -837,20 +936,10 @@ export function DatesView() {
                           </span>
                         </>
                       );
-                      // 无归属案件的 vault 条目无处可去，渲染为不可点击
-                      return isVault && !item.caseId ? (
-                        <div key={itemKey(item)} style={{ ...pillStyle, cursor: "default" }}>
+                      return (
+                        <DateItemAction key={itemKey(item)} item={item} href={itemHref(item)} onEdit={openEditor} style={pillStyle}>
                           {pill}
-                        </div>
-                      ) : (
-                        <Link
-                          key={itemKey(item)}
-                          href={itemHref(item)}
-                          onClick={(e) => e.stopPropagation()}
-                          style={pillStyle}
-                        >
-                          {pill}
-                        </Link>
+                        </DateItemAction>
                       );
                     })}
                     {overflow > 0 && (
@@ -865,6 +954,77 @@ export function DatesView() {
           </>
         )}
       </div>
+
+      {editing && (
+        <div
+          onClick={() => !saving && setEditing(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 100,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+            background: "rgba(0,0,0,0.18)",
+          }}
+        >
+          <form
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="date-editor-title"
+            onClick={(event) => event.stopPropagation()}
+            onSubmit={(event) => {
+              event.preventDefault();
+              void saveDate();
+            }}
+            style={{
+              width: "min(400px, 100%)",
+              padding: 18,
+              border: "1px solid var(--border)",
+              borderRadius: 2,
+              background: "var(--bg)",
+              boxShadow: "0 20px 60px rgba(0,0,0,0.28)",
+            }}
+          >
+            <div id="date-editor-title" style={{ fontSize: 15, fontWeight: 700 }}>
+              {editing.kind === "deadline" ? tr("修改期限日期", "Edit deadline date") : tr("修改日程时间", "Edit schedule time")}
+            </div>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 5 }}>{editing.title}</div>
+            <div style={{ display: "grid", gridTemplateColumns: editing.kind === "schedule" ? "1fr 110px" : "1fr", gap: 10, marginTop: 18 }}>
+              <label style={{ display: "grid", gap: 5 }}>
+                <span style={{ ...MICRO, color: "var(--text-dim)" }}>{tr("日期", "Date")}</span>
+                <input
+                  type="date"
+                  required
+                  value={editDate}
+                  onChange={(event) => setEditDate(event.target.value)}
+                  style={{ border: "1px solid var(--border)", borderRadius: 2, padding: "8px 9px", background: "var(--bg)", color: "var(--text)", font: "inherit" }}
+                />
+              </label>
+              {editing.kind === "schedule" && (
+                <label style={{ display: "grid", gap: 5 }}>
+                  <span style={{ ...MICRO, color: "var(--text-dim)" }}>{tr("时间", "Time")}</span>
+                  <input
+                    type="time"
+                    required
+                    value={editTime}
+                    onChange={(event) => setEditTime(event.target.value)}
+                    style={{ border: "1px solid var(--border)", borderRadius: 2, padding: "8px 9px", background: "var(--bg)", color: "var(--text)", font: "inherit" }}
+                  />
+                </label>
+              )}
+            </div>
+            {editError && <div style={{ fontSize: 12, color: "var(--accent)", marginTop: 10 }}>{editError}</div>}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 18 }}>
+              <button type="button" disabled={saving} onClick={() => setEditing(null)} style={navButton}>{tr("取消", "Cancel")}</button>
+              <button type="submit" disabled={saving} style={{ ...navButton, color: "var(--text)", borderColor: "var(--text)" }}>
+                {saving ? tr("保存中…", "Saving…") : tr("保存", "Save")}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </main>,
   );
 }

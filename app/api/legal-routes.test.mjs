@@ -14,6 +14,7 @@ const casesRoute = await jiti.import("./cases/route.ts");
 const tasksRoute = await jiti.import("./tasks/route.ts");
 const deadlinesRoute = await jiti.import("./deadlines/route.ts");
 const schedulesRoute = await jiti.import("./schedules/route.ts");
+const vaultItemsRoute = await jiti.import("./vault-items/route.ts");
 const workflowsRoute = await jiti.import("./workflows/route.ts");
 const projectsRoute = await jiti.import("./projects/route.ts");
 const deliverablesRoute = await jiti.import("./deliverables/route.ts");
@@ -203,6 +204,41 @@ test("runs deadline and schedule CRUD without accepting invalid calendar values"
 
   assert.equal((await call(deadlinesRoute.DELETE, "/api/deadlines", { method: "DELETE", query: { cwd, id: deadline.body.deadline.id } })).status, 200);
   assert.equal((await call(schedulesRoute.DELETE, "/api/schedules", { method: "DELETE", query: { cwd, id: schedule.body.schedule.id } })).status, 200);
+});
+
+test("edits Vault-native deadline and schedule times without changing their Markdown bodies", async (t) => {
+  const cwd = makeProject(t);
+  const caseItem = await createCase(cwd);
+  const deadlineDir = join(caseItem.vaultPath, "期限");
+  const scheduleDir = join(caseItem.vaultPath, "日程");
+  mkdirSync(deadlineDir, { recursive: true });
+  mkdirSync(scheduleDir, { recursive: true });
+  const deadlinePath = join(deadlineDir, "答辩期限.md");
+  const schedulePath = join(scheduleDir, "开庭.md");
+  writeFileSync(deadlinePath, "---\n事项类型: 期限\n截止日期: 2026-08-11\n---\n\n保留的期限说明\n", "utf8");
+  writeFileSync(schedulePath, "---\n事项类型: 日程\n开始时间: 2026-08-12 09:30\n---\n\n保留的日程说明\n", "utf8");
+
+  const listed = await call(vaultItemsRoute.GET, "/api/vault-items", { query: { cwd } });
+  const deadline = listed.body.items.find((item) => item.title === "答辩期限");
+  const schedule = listed.body.items.find((item) => item.title === "开庭");
+  assert.ok(deadline);
+  assert.ok(schedule);
+
+  const patchedDeadline = await call(vaultItemsRoute.PATCH, "/api/vault-items", {
+    method: "PATCH", body: { cwd, filePath: deadline.filePath, kind: "deadline", date: "2026-08-15" },
+  });
+  assert.equal(patchedDeadline.status, 200);
+  const patchedSchedule = await call(vaultItemsRoute.PATCH, "/api/vault-items", {
+    method: "PATCH", body: { cwd, filePath: schedule.filePath, kind: "schedule", date: "2026-08-16", time: "14:00" },
+  });
+  assert.equal(patchedSchedule.status, 200);
+  assert.match(readFileSync(deadlinePath, "utf8"), /截止日期: ['"]?2026-08-15['"]?[\s\S]*保留的期限说明/);
+  assert.match(readFileSync(schedulePath, "utf8"), /开始时间: ['"]?2026-08-16 14:00['"]?[\s\S]*保留的日程说明/);
+
+  const invalid = await call(vaultItemsRoute.PATCH, "/api/vault-items", {
+    method: "PATCH", body: { cwd, filePath: schedule.filePath, kind: "schedule", date: "2026-08-16", time: "9:00" },
+  });
+  assert.equal(invalid.status, 400);
 });
 
 test("previews and starts a case-compatible workflow exactly once", async (t) => {

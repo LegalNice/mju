@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { dump as dumpYaml, load as parseYaml } from "js-yaml";
 import type { Case, MjuStore, Task, TaskPriority, TaskStatus } from "./mju-models";
 
@@ -258,6 +258,41 @@ export function writeVaultTask(task: Task, vaultPath: string): void {
   if (!task.completedAt) delete frontmatter["完成时间"];
   const content = `---\n${dumpYaml(frontmatter, { lineWidth: -1 })}---\n\n${existing.body}`;
   atomicWrite(vaultPath, content);
+}
+
+/**
+ * Update the date fields of a Vault-native deadline or schedule while retaining
+ * every other frontmatter field and the Markdown body. The file must live
+ * under the selected project's ops/ directory; this keeps the API from being
+ * used as a general file writer.
+ */
+export function updateVaultItemDate(
+  cwd: string,
+  filePath: string,
+  kind: "deadline" | "schedule",
+  date: string,
+  time?: string,
+): void {
+  const opsRoot = resolve(cwd, "ops");
+  const target = resolve(filePath);
+  if (!target.startsWith(`${opsRoot}/`)) throw new Error("Vault item is outside the project ops directory");
+
+  const existing = rawWithFrontmatter(target);
+  if (!existing) throw new Error("Vault item file is missing or has invalid frontmatter");
+  const folderKind = ITEM_DIRS.get(basename(join(target, "..")));
+  const typeRaw = existing.frontmatter["事项类型"];
+  const itemKind = typeRaw === "期限" ? "deadline" : typeRaw === "日程" ? "schedule" : folderKind;
+  if (itemKind !== kind) throw new Error("Vault item type does not match");
+
+  const frontmatter = { ...existing.frontmatter };
+  if (kind === "deadline") {
+    frontmatter["截止日期"] = date;
+  } else {
+    if (!time || !/^\d{2}:\d{2}$/.test(time)) throw new Error("Schedule time is required");
+    frontmatter["开始时间"] = `${date} ${time}`;
+  }
+  const content = `---\n${dumpYaml(frontmatter, { lineWidth: -1 })}---\n\n${existing.body}`;
+  atomicWrite(target, content);
 }
 
 /** Scan ops/** for 任务/期限/日程 item files and normalize their frontmatter. */
