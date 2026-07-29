@@ -8,6 +8,7 @@ import { MessageView } from "./MessageView";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
 import { Wordmark } from "./Wordmark";
+import { useI18n } from "./I18nProvider";
 import { useAgentSession, type AgentPhase, type NoticeItem } from "@/hooks/useAgentSession";
 import { useAudio } from "@/hooks/useAudio";
 import { useDragDrop } from "@/hooks/useDragDrop";
@@ -39,17 +40,18 @@ interface Props {
   onWorkspaceChange?: (cwd: string) => void;
 }
 
-function phaseLabel(phase: AgentPhase): string {
+function phaseLabel(phase: AgentPhase, language: "zh-CN" | "en"): string {
+  const zh = language === "zh-CN";
   if (phase?.kind === "running_tools") {
     const names = phase.tools.map((t) => t.name);
-    if (names.length === 0) return "Running tool...";
-    if (names.length === 1) return `Running ${names[0]}...`;
-    if (names.length <= 3) return `Running ${names.join(", ")}...`;
-    return `Running ${names.slice(0, 2).join(", ")} (+${names.length - 2})...`;
+    if (names.length === 0) return zh ? "正在调用工具" : "Running tool";
+    if (names.length === 1) return zh ? `正在执行 ${names[0]}` : `Running ${names[0]}`;
+    if (names.length <= 3) return zh ? `正在执行 ${names.join("、")}` : `Running ${names.join(", ")}`;
+    return zh ? `正在执行 ${names.slice(0, 2).join("、")} 等 ${names.length} 项` : `Running ${names.slice(0, 2).join(", ")} and ${names.length - 2} more`;
   }
-  if (phase?.kind === "waiting_model") return "Waiting for model...";
-  if (phase?.kind === "running_command") return "Running command...";
-  return "Thinking...";
+  if (phase?.kind === "waiting_model") return zh ? "正在生成答复" : "Generating response";
+  if (phase?.kind === "running_command") return zh ? "正在执行命令" : "Running command";
+  return zh ? "正在处理" : "Working";
 }
 
 const CHAT_MINIMAP_WIDTH = 36;
@@ -85,7 +87,7 @@ function countToolCalls(messages: AgentMessage[], indices: number[]): number {
 
 function hasDisplayableProcessMessage(message: AgentMessage): boolean {
   if (message.role === "assistant") {
-    return getDisplayableAssistantBlocks(message as AssistantMessage).length > 0;
+    return getDisplayableAssistantBlocks(message as AssistantMessage).some((block) => block.type !== "thinking");
   }
   return message.role === "custom";
 }
@@ -102,8 +104,10 @@ function withAssistantBlocks(
 
 function ProcessDetailsGroup({ messageCount, toolCallCount, children }: { messageCount: number; toolCallCount: number; children: ReactNode }) {
   const [expanded, setExpanded] = useState(false);
-  const parts = ["Process details", `${messageCount} ${messageCount === 1 ? "message" : "messages"}`];
-  if (toolCallCount > 0) parts.push(`${toolCallCount} ${toolCallCount === 1 ? "tool call" : "tool calls"}`);
+  const { text } = useI18n();
+  const label = toolCallCount > 0
+    ? text(`已执行 ${toolCallCount} 项工具操作`, `${toolCallCount} tool action${toolCallCount === 1 ? "" : "s"} completed`)
+    : text(`工作过程（${messageCount} 条）`, `Process (${messageCount})`);
 
   return (
     <div>
@@ -114,11 +118,11 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, children }: { messag
         style={{
           display: "flex",
           alignItems: "center",
-          justifyContent: "center",
+          justifyContent: "flex-start",
           gap: 8,
           width: "100%",
           minHeight: 24,
-          padding: "10px 0",
+          padding: "8px 0 6px",
           border: "none",
           background: "transparent",
           color: "var(--text-dim)",
@@ -126,8 +130,7 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, children }: { messag
           fontSize: 11,
           fontWeight: 700,
           letterSpacing: ".1em",
-          textTransform: "uppercase",
-          textAlign: "center",
+          textAlign: "left",
         }}
         title={expanded ? "Collapse process details" : "Expand process details"}
       >
@@ -135,7 +138,7 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, children }: { messag
           <polyline points="4 2.5 7.5 6 4 9.5" />
         </svg>
         <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {parts.join(" · ")}
+          {label}
         </span>
       </button>
       {expanded && (
@@ -148,6 +151,7 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, children }: { messag
 }
 
 export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, onWorkspaceChange }: Props) {
+  const { locale, text } = useI18n();
   const { soundEnabled, onSoundToggle, playDoneSound, unlockAudio } = useAudio();
   const isMobile = useIsMobile();
 
@@ -366,7 +370,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center text-text-muted">
-        Loading session...
+        {text("正在载入任务…", "Loading task…")}
       </div>
     );
   }
@@ -448,16 +452,16 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, minWidth: 0, lineHeight: 1.4 }}>
                   <Wordmark fontSize={24} />
                   <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", color: "var(--text-dim)", textTransform: "uppercase" }}>
-                    Your tough but fair legal assistant
+                    {text("冷静、可靠的法律协作助手", "Your tough but fair legal assistant")}
                   </span>
                 </div>
               </div>
-              <button type="button" className="workspace-chip" title={workspacePickerError ?? "点击选择本地工作区"} onClick={() => void handlePickWorkspace()} disabled={workspacePickerBusy} style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box", margin: "0 auto 12px", cursor: workspacePickerBusy ? "wait" : "pointer", opacity: workspacePickerBusy ? 0.7 : 1 }}>
+              <button type="button" className="workspace-chip" title={workspacePickerError ?? text("点击选择本地工作区", "Select local workspace")} onClick={() => void handlePickWorkspace()} disabled={workspacePickerBusy} style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box", margin: "0 auto 12px", cursor: workspacePickerBusy ? "wait" : "pointer", opacity: workspacePickerBusy ? 0.7 : 1 }}>
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M2.5 4.5h4l1.3 1.5h5.7v6.5h-11z" />
                   <path d="M2.5 4.5V3.2h4.1l1.2 1.3" />
                 </svg>
-                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)", fontSize: 11 }}>{messageCwd ?? "未选择工作区"}</span>
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)", fontSize: 11 }}>{messageCwd ?? text("未选择工作区", "No workspace selected")}</span>
               </button>
             </div>
             <NoticeShelf notices={notices} align="right" />
@@ -482,7 +486,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
             <NoticeShelf notices={notices} floating align="right" />
           </div>
         </div>
-        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto pt-4 [scrollbar-width:none]">
+        <div ref={scrollContainerRef} className="chat-transcript flex-1 overflow-y-auto pt-4 [scrollbar-width:none]">
           <div style={{ padding: `0 ${CHAT_COLUMN_PADDING}px` }}>
             <div style={{ maxWidth: 760, margin: "0 auto" }}>
               <ExtensionStatusBar statuses={extensionStatuses} />
@@ -606,8 +610,9 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
                 const visibleProcessIndices = processIndices.filter((processIdx) => hasDisplayableProcessMessage(messages[processIdx]));
                 const finalAssistant = messages[finalAssistantIdx] as AssistantMessage;
                 const finalSplit = splitFinalAssistantBlocks(finalAssistant);
-                const finalProcessMessage = finalSplit.processBlocks.length > 0
-                  ? withAssistantBlocks(finalAssistant, finalSplit.processBlocks, { omitUsage: true })
+                const visibleFinalProcessBlocks = finalSplit.processBlocks.filter((block) => block.type !== "thinking");
+                const finalProcessMessage = visibleFinalProcessBlocks.length > 0
+                  ? withAssistantBlocks(finalAssistant, visibleFinalProcessBlocks, { omitUsage: true })
                   : null;
                 const finalAnswerMessage = finalSplit.answerBlocks.length > 0
                   ? withAssistantBlocks(finalAssistant, finalSplit.answerBlocks)
@@ -652,7 +657,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
                 <>
                   {hasMore && (
                     <div ref={sentinelRef} className="py-3 text-center" style={{ fontSize: 11, color: "var(--text-dim)" }}>
-                      Scroll up to load earlier messages ({startIndex} hidden)
+                      {text(`向上滚动以载入更早消息（已隐藏 ${startIndex} 条）`, `Scroll up to load earlier messages (${startIndex} hidden)`)}
                     </div>
                   )}
                   {rendered.slice(startIndex)}
@@ -663,9 +668,9 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
               <MessageView message={streamState.streamingMessage as AgentMessage} isStreaming modelNames={modelNames} cwd={messageCwd} onOpenFile={onOpenFile} showDivider={messages.length > 0} />
             )}
 
-            {agentRunning && !streamState.streamingMessage && (
-              <div style={{ padding: "10px 0", textAlign: "center", fontSize: 11, color: "var(--text-dim)", borderTop: messages.length > 0 ? "1px solid var(--border)" : "none" }}>
-                <span className="animate-[pulse_1.5s_infinite]">{phaseLabel(agentPhase)}</span>
+            {agentRunning && (
+              <div style={{ padding: "8px 0 4px", fontSize: 11, color: "var(--text-dim)", fontFamily: "var(--font-mono)", borderTop: messages.length > 0 ? "1px solid var(--border)" : "none" }}>
+                <span className="animate-[pulse_1.5s_infinite]">{phaseLabel(agentPhase, locale)}</span>
               </div>
             )}
 
