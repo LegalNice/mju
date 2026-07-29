@@ -7,7 +7,8 @@ import { mjuProjectAgentsDir } from "@/lib/mju-paths";
 
 export const dynamic = "force-dynamic";
 
-type AgentScope = "user" | "project";
+type AgentScope = "user" | "project" | "bundled";
+type WritableAgentScope = Exclude<AgentScope, "bundled">;
 
 type AgentRecord = {
   name: string;
@@ -26,6 +27,8 @@ type AgentRecord = {
   systemPrompt: string;
   scope: AgentScope;
   filePath: string;
+  overridden?: boolean;
+  overrideScope?: WritableAgentScope;
 };
 
 /** Legacy in-workspace locations, kept readable for backward compatibility. */
@@ -52,7 +55,7 @@ function projectAgentsDirs(cwd: string): string[] {
   return [mjuProjectAgentsDir(cwd), ...legacyAgentsDirs(cwd)];
 }
 
-function getDir(scope: AgentScope, cwd?: string): string | null {
+function getDir(scope: WritableAgentScope, cwd?: string): string | null {
   if (scope === "user") return join(getAgentDir(), "agents");
   return cwd ? mjuProjectAgentsDir(cwd) : null;
 }
@@ -154,11 +157,16 @@ export async function GET(req: Request) {
       if (!projectAgents.has(agent.name)) projectAgents.set(agent.name, agent);
     }
   }
+  const userAgents = readAgents(userDir, "user");
+  const userNames = new Set(userAgents.map((agent) => agent.name));
+  const projectNames = new Set(projectAgents.keys());
+  const bundledAgents = readAgents(join(process.cwd(), "defaults", "agents"), "bundled")
+    .map((agent) => {
+      const overrideScope = userNames.has(agent.name) ? "user" : projectNames.has(agent.name) ? "project" : undefined;
+      return { ...agent, overridden: Boolean(overrideScope), overrideScope };
+    });
   return NextResponse.json({
-    agents: [
-      ...readAgents(userDir, "user"),
-      ...projectAgents.values(),
-    ],
+    agents: [...userAgents, ...projectAgents.values(), ...bundledAgents],
     directories: { user: userDir, project: projectDirs[0] ?? null, legacy: projectDirs.slice(1) },
   });
 }
@@ -186,6 +194,7 @@ export async function DELETE(req: Request) {
     const body = await req.json() as { name?: string; cwd?: string; scope?: AgentScope };
     if (!body.name || !validName(body.name)) return NextResponse.json({ error: "invalid name" }, { status: 400 });
     const scope = body.scope || "user";
+    if (scope === "bundled") return NextResponse.json({ error: "bundled agents cannot be deleted" }, { status: 400 });
     // Delete from the primary dir and any legacy dirs so old copies cannot
     // resurrect the agent through the backward-compatible read path.
     const dirs = scope === "user"

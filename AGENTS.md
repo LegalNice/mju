@@ -3,7 +3,7 @@
 ## Quick Start
 
 ```bash
-npm run dev   # port 30142
+npm run dev   # port 30143 (development/test)
 ```
 
 Typecheck: `node_modules/.bin/tsc --noEmit`  
@@ -25,7 +25,7 @@ git switch -c codex/<short-task-name>
 # Install only on the first run or after dependency changes.
 npm install
 
-# Start the local development server, then open http://localhost:30142.
+# Start the local development server, then open http://localhost:30143.
 npm run dev
 ```
 
@@ -73,6 +73,7 @@ app/
   task/[taskId]/page.tsx        task detail (TaskDetailView)
   sessions/page.tsx             legacy redirect: ?session=<id> → owning /task, else /
 app/api/
+  agents/route.ts                 GET/PUT/DELETE user, project and bundled subagents
   sessions/route.ts               GET  list all sessions
   sessions/[id]/route.ts          GET/PATCH/DELETE session
   sessions/[id]/context/route.ts  GET ?leafId= — context for a specific leaf
@@ -86,6 +87,7 @@ app/api/
   auth/login/[provider]/route.ts  GET OAuth/device-code SSE | POST manual code
   auth/logout/[provider]/route.ts POST OAuth logout
   auth/providers/route.ts         GET OAuth provider list
+  changelog/route.ts               GET current version and bundled CHANGELOG.md
   casedocs/route.ts               GET ?cwd=&caseId= — case folder .md files, newest first
   cases/route.ts                  GET/POST cases; POST {action:"ensure_inbox"} creates the inbox case
   classify/route.ts               POST {cwd, instruction} → {caseId|null} — default-model case attribution
@@ -146,11 +148,21 @@ components/
   MessageView.tsx     renders one message (user/assistant/toolCall/toolResult)
   BranchNavigator.tsx in-session branch switcher (inline mode used by TaskDetailView)
   ChatMinimap.tsx     scroll minimap alongside the message list
+  ChangelogConfig.tsx versioned release notes modal
   MarkdownBody.tsx    markdown renderer
   ModelsConfig.tsx    modal for editing models.json (entry-page config strip)
   PluginsConfig.tsx   modal for installed package plugins
   SkillsConfig.tsx    modal for loaded/search/installable skills
+  SubagentsConfig.tsx modal for user, project and bundled subagent definitions
   FileIcons.tsx       file icon helpers
+
+  favicon.ico         512px PNG μ app icon (served through Next file convention)
+
+defaults/
+  agents/             bundled legal subagents (read-only base definitions)
+  skills/introduction/ global Mju usage guide, installed into the user skill directory on session start
+
+CHANGELOG.md          bundled Chinese release notes, served by /api/changelog
 
 hooks/
   useAgentSession.ts  messages + streaming + SSE + fork/navigate/reconciliation logic

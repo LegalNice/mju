@@ -118,7 +118,7 @@ npm install -g @tttangerine/mju
 mju
 ```
 
-然后打开 [http://localhost:30142](http://localhost:30142)。首次使用，在进入页指向任意文件夹即可：
+然后打开 [http://localhost:26313](http://localhost:26313)。首次使用，在进入页指向任意文件夹即可：
 
 - 如果指向 Obsidian 文件库，Mju 会自动扫描 `ops/cases/案卷`、`ops/projects/活跃项目` 等目录；
 - 如果指向空文件夹，Mju 会自动生成标准项目结构、案件骨架、`AGENTS.md` 和内置 skills，直接上手。
@@ -168,7 +168,7 @@ Mju Agents 以 [MIT License](./LICENSE) 开源。项目最初基于同样采用 
 
 ```bash
 npm install
-npm run dev    # http://localhost:30142
+npm run dev    # http://localhost:30143（开发测试端口）
 ```
 
 检查：`npm run typecheck`、`npm run lint`、`npm run test:backend`。开发时不要跑 `next build`。完整文件地图和设计决策见 [AGENTS.md](./AGENTS.md)。

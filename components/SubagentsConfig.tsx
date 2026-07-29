@@ -5,8 +5,9 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import { colors, radius, animationCss, modalBackdrop, modalPanel, buttonPrimary, inputBase, inputFocus, inputBlur } from "@/lib/design-system";
 
 type AgentScope = "user" | "project";
+type AgentSourceScope = AgentScope | "bundled";
 type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
-type Agent = { name: string; description: string; model?: string; thinkingLevel?: ThinkingLevel; tools?: string[]; skills?: string[]; mcp?: string[]; fallbackModels?: string[]; systemPromptMode?: "replace" | "append"; inheritProjectContext?: boolean; inheritSkills?: boolean; async?: boolean; timeoutMs?: number; systemPrompt: string; scope: AgentScope; filePath: string };
+type Agent = { name: string; description: string; model?: string; thinkingLevel?: ThinkingLevel; tools?: string[]; skills?: string[]; mcp?: string[]; fallbackModels?: string[]; systemPromptMode?: "replace" | "append"; inheritProjectContext?: boolean; inheritSkills?: boolean; async?: boolean; timeoutMs?: number; systemPrompt: string; scope: AgentSourceScope; filePath: string; overridden?: boolean; overrideScope?: AgentScope };
 type Model = { id: string; name: string; provider: string };
 type Skill = { name: string; description: string; filePath: string };
 
@@ -97,6 +98,7 @@ export function SubagentsConfig({ cwd, onClose }: { cwd?: string | null; onClose
   const [mcp, setMcp] = useState<string[]>([]);
   const [form, setForm] = useState(emptyForm);
   const [selected, setSelected] = useState<string | null>(null);
+  const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -133,12 +135,14 @@ export function SubagentsConfig({ cwd, onClose }: { cwd?: string | null; onClose
 
   const editAgent = (agent: Agent) => {
     setSelected(agent.filePath);
-    setForm({ name: agent.name, description: agent.description, model: agent.model ?? "", thinkingLevel: agent.thinkingLevel ?? "off", tools: agent.tools ?? [], skills: agent.skills ?? [], mcp: agent.mcp ?? [], fallbackModels: agent.fallbackModels ?? [], systemPromptMode: agent.systemPromptMode ?? "replace", inheritProjectContext: agent.inheritProjectContext ?? false, inheritSkills: agent.inheritSkills ?? false, async: agent.async ?? false, timeoutMs: agent.timeoutMs ?? 900000, systemPrompt: agent.systemPrompt, scope: agent.scope });
+    setSelectedAgent(agent);
+    setForm({ name: agent.name, description: agent.description, model: agent.model ?? "", thinkingLevel: agent.thinkingLevel ?? "off", tools: agent.tools ?? [], skills: agent.skills ?? [], mcp: agent.mcp ?? [], fallbackModels: agent.fallbackModels ?? [], systemPromptMode: agent.systemPromptMode ?? "replace", inheritProjectContext: agent.inheritProjectContext ?? false, inheritSkills: agent.inheritSkills ?? false, async: agent.async ?? false, timeoutMs: agent.timeoutMs ?? 900000, systemPrompt: agent.systemPrompt, scope: agent.scope === "bundled" ? "user" : agent.scope });
     setMessage(null);
   };
 
   const newAgent = () => {
     setSelected(null);
+    setSelectedAgent(null);
     setForm({ ...emptyForm, scope: cwd ? "project" : "user" });
     setMessage(null);
   };
@@ -164,8 +168,11 @@ export function SubagentsConfig({ cwd, onClose }: { cwd?: string | null; onClose
   };
 
   const remove = async () => {
-    if (!form.name || !window.confirm(`Delete agent "${form.name}"?`)) return;
-    const response = await fetch("/api/agents", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: form.name, scope: form.scope, cwd }) });
+    if (selectedAgent?.scope === "bundled" && !selectedAgent.overridden) return;
+    const action = selectedAgent?.scope === "bundled" ? "删除覆盖副本并恢复内置版本" : `Delete agent "${form.name}"?`;
+    if (!form.name || !window.confirm(action)) return;
+    const scope = selectedAgent?.scope === "bundled" ? selectedAgent.overrideScope ?? "user" : form.scope;
+    const response = await fetch("/api/agents", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: form.name, scope, cwd }) });
     if (!response.ok) { setMessage("删除失败"); return; }
     newAgent();
     await load();
@@ -284,7 +291,8 @@ export function SubagentsConfig({ cwd, onClose }: { cwd?: string | null; onClose
                         <span style={{ display: "block", fontWeight: 600, fontSize: 13 }}>{agent.name}</span>
                         <span style={{ display: "block", color: colors.textSecondary, fontSize: 11, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{agent.description}</span>
                         <span style={{ display: "block", color: colors.textTertiary, fontSize: 10, marginTop: 5 }}>
-                          {agent.scope === "project" ? "项目" : "全局"} · {agent.model || "默认模型"}
+                          {agent.scope === "bundled" ? "内置" : agent.scope === "project" ? "项目" : "全局"} · {agent.model || "默认模型"}
+                          {agent.overridden && <span style={{ marginLeft: 6, color: colors.accent }}>已被覆盖</span>}
                         </span>
                       </span>
                     </button>
@@ -304,7 +312,7 @@ export function SubagentsConfig({ cwd, onClose }: { cwd?: string | null; onClose
                 >
                   {saving ? "保存中…" : "保存配置"}
                 </button>
-                {selected && (
+                {selected && !(selectedAgent?.scope === "bundled" && !selectedAgent.overridden) && (
                   <button
                     onClick={() => void remove()}
                     style={{
@@ -328,7 +336,7 @@ export function SubagentsConfig({ cwd, onClose }: { cwd?: string | null; onClose
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 20, marginBottom: 24 }}>
                 <div>
                   <div style={{ color: colors.accent, fontSize: 11, fontWeight: 600, letterSpacing: ".08em", marginBottom: 6 }}>
-                    {selected ? "EDIT AGENT" : "NEW AGENT"}
+                  {selected ? selectedAgent?.scope === "bundled" ? "BUNDLED AGENT" : "EDIT AGENT" : "NEW AGENT"}
                   </div>
                   <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", color: colors.text }}>
                     {selected ? `编辑 ${form.name}` : "创建一个专属协作者"}
@@ -336,6 +344,11 @@ export function SubagentsConfig({ cwd, onClose }: { cwd?: string | null; onClose
                   <p style={{ margin: "8px 0 0", color: colors.textSecondary, fontSize: 13 }}>
                     先定义它做什么，再决定它能看到什么。
                   </p>
+                  {selectedAgent?.scope === "bundled" && (
+                    <p style={{ margin: "8px 0 0", color: colors.accent, fontSize: 12 }}>
+                      保存将创建用户级副本并覆盖内置版本；删除覆盖副本即可恢复内置配置。
+                    </p>
+                  )}
                 </div>
                 <div style={{ padding: "6px 10px", borderRadius: radius.full, background: colors.bgSecondary, color: colors.textSecondary, fontSize: 11, whiteSpace: "nowrap" }}>
                   Markdown agent
@@ -577,7 +590,7 @@ export function SubagentsConfig({ cwd, onClose }: { cwd?: string | null; onClose
                 >
                   {saving ? "保存中…" : "保存配置"}
                 </button>
-                {selected && (
+                {selected && !(selectedAgent?.scope === "bundled" && !selectedAgent.overridden) && (
                   <button
                     onClick={() => void remove()}
                     style={{

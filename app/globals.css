@@ -304,6 +304,25 @@ pre, code {
   white-space: pre-wrap;
 }
 
+.markdown-assistant-message {
+  line-height: 1.68;
+}
+.markdown-assistant-message p { margin: 0 0 10px; }
+.markdown-assistant-message p:last-child { margin-bottom: 0; }
+.markdown-assistant-message h1,
+.markdown-assistant-message h2,
+.markdown-assistant-message h3,
+.markdown-assistant-message h4,
+.markdown-assistant-message h5,
+.markdown-assistant-message h6 {
+  margin: 18px 0 7px;
+  letter-spacing: -0.015em;
+}
+.markdown-assistant-message ul,
+.markdown-assistant-message ol { margin: 7px 0 10px; padding-left: 1.5em; }
+.markdown-assistant-message li + li { margin-top: 3px; }
+.markdown-assistant-message .markdown-table-wrap { border-radius: 8px; }
+
 .markdown-custom-message {
   line-height: 1.32;
 }
@@ -398,15 +417,15 @@ pre, code {
 .markdown-code-block {
   position: relative;
   margin: 6px 0;
-  border: 1px solid var(--border);
-  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border-radius: 8px;
   overflow: hidden;
   background: var(--bg);
 }
 .markdown-code-header {
   padding: 5px 10px;
   background: var(--bg-panel);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
   color: var(--text-dim);
   font-size: 11px;
   display: flex;
@@ -426,7 +445,7 @@ pre, code {
 }
 .markdown-code-action {
   border: 1px solid var(--border);
-  border-radius: 2px;
+  border-radius: 5px;
   padding: 2px 7px;
   background: var(--bg);
   color: var(--text-muted);
@@ -439,6 +458,13 @@ pre, code {
   color: var(--text);
   border-color: color-mix(in srgb, var(--border) 70%, var(--text-muted));
 }
+
+.markdown-changelog { line-height: 1.65; }
+.markdown-changelog h1,
+.markdown-changelog h2 { margin: 20px 0 8px; letter-spacing: -0.015em; }
+.markdown-changelog h3 { margin: 14px 0 6px; color: var(--text-muted); font-size: 13px; }
+.markdown-changelog ul { margin: 5px 0 12px; padding-left: 1.4em; }
+.markdown-changelog li + li { margin-top: 4px; }
 .markdown-code-action:disabled {
   color: var(--text-dim);
   cursor: not-allowed;

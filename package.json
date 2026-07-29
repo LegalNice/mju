@@ -1,6 +1,6 @@
 {
   "name": "@tttangerine/mju",
-  "version": "1.7.2",
+  "version": "1.7.3",
   "description": "Mju Agents: your tough but fair legal assistant, with a bundled Pi runtime and subagents",
   "license": "MIT",
   "engines": {
@@ -18,14 +18,15 @@
     "defaults",
     "public",
     "NOTICE",
+    "CHANGELOG.md",
     "next.config.ts",
     "package.json"
   ],
   "scripts": {
-    "dev": "next dev -p 30142",
-    "dev:webpack": "next dev --webpack -p 30142",
+    "dev": "next dev -p 30143",
+    "dev:webpack": "next dev --webpack -p 30143",
     "build": "next build --webpack",
-    "start": "next start -p 30142",
+    "start": "next start -p 26313",
     "test:backend": "node --test lib/mju-store.test.mjs lib/material-intelligence.test.mjs app/api/legal-routes.test.mjs \"app/api/cases/*/materials/route.test.mjs\" \"app/api/cases/*/materials/analyze/route.test.mjs\" \"app/api/cases/*/materials/convert/route.test.mjs\"",
     "lint": "eslint .",
     "release": "npm version patch --no-git-tag-version && npm run build && npm publish --access public",
