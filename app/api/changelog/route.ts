@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { checkMjuUpdate } from "@/lib/mju-update";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,5 +18,6 @@ function getVersion(): string {
 export async function GET() {
   const filePath = join(process.cwd(), "CHANGELOG.md");
   const content = existsSync(filePath) ? readFileSync(filePath, "utf8") : "";
-  return NextResponse.json({ version: getVersion(), content });
+  const update = await checkMjuUpdate();
+  return NextResponse.json({ version: getVersion(), content, update });
 }
