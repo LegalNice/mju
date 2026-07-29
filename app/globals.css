@@ -55,15 +55,43 @@ html.dark {
 }
 
 .chat-composer {
-  border: 1px solid var(--border) !important;
-  border-radius: 2px !important;
-  background: var(--bg) !important;
+  border: 1px solid color-mix(in srgb, var(--border) 85%, transparent) !important;
+  border-radius: 0 !important;
+  background: color-mix(in srgb, var(--bg) 96%, var(--bg-panel)) !important;
   box-shadow: none !important;
 }
 .chat-composer:focus-within {
   border-color: var(--accent) !important;
-  box-shadow: none !important;
+  box-shadow: inset 3px 0 0 var(--accent) !important;
 }
+.language-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: .06em;
+}
+.language-toggle button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 3px 1px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.language-toggle button[aria-pressed="true"] { color: var(--accent); }
+.language-toggle button:hover { color: var(--text); }
+
+/* Agent execution should read like a terminal transcript, not stacked cards. */
+.chat-transcript .markdown-assistant-message { max-width: 76ch; }
+.chat-transcript .terminal-thinking {
+  border-left: 1px solid color-mix(in srgb, var(--text-dim) 55%, transparent);
+  margin: 2px 0 4px;
+  padding-left: 10px;
+}
+.chat-transcript .terminal-thinking button { font-family: var(--font-mono); }
 .chat-composer textarea,
 .chat-composer textarea:focus {
   border: none !important;

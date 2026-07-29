@@ -13,6 +13,7 @@ import { ThemeConfig } from "@/components/ThemeConfig";
 import { MineruConfig } from "@/components/MineruConfig";
 import { ChangelogConfig } from "@/components/ChangelogConfig";
 import { Wordmark } from "@/components/Wordmark";
+import { LanguageToggle, useI18n } from "@/components/I18nProvider";
 
 const LS_CWD = "mju-entry-cwd";
 const LS_LAST_CASE = "mju-last-case";
@@ -437,6 +438,7 @@ function InitProjectForm({ onInitialized }: { onInitialized: (p: ProjectSummary)
 }
 
 export function EntryPage() {
+  const { text: tr } = useI18n();
   const router = useRouter();
 
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
@@ -813,13 +815,13 @@ export function EntryPage() {
   const todayStr = localDateString(new Date());
 
   const configButtons: { id: ConfigPanel; label: string; needsProject?: boolean }[] = [
-    { id: "models", label: "MODELS" },
-    { id: "skills", label: "SKILLS", needsProject: true },
-    { id: "agents", label: "AGENTS" },
-    { id: "plugins", label: "PLUGINS", needsProject: true },
+    { id: "models", label: tr("模型", "MODELS") },
+    { id: "skills", label: tr("技能", "SKILLS"), needsProject: true },
+    { id: "agents", label: tr("智能体", "AGENTS") },
+    { id: "plugins", label: tr("插件", "PLUGINS"), needsProject: true },
     { id: "mineru", label: "MINERU" },
-    { id: "theme", label: "THEME" },
-    { id: "changelog", label: "CHANGELOG" },
+    { id: "theme", label: tr("外观", "THEME") },
+    { id: "changelog", label: tr("更新日志", "CHANGELOG") },
   ];
 
   const launch = async () => {
@@ -936,12 +938,13 @@ export function EntryPage() {
       `}</style>
 
       <div style={{ width: "min(640px, 92vw)", display: "flex", flexDirection: "column" }}>
-        <div style={{ textAlign: "center" }}>
+        <div style={{ textAlign: "center", position: "relative" }}>
+          <div style={{ position: "absolute", right: 0, top: 0 }}><LanguageToggle /></div>
           <div style={{ display: "flex", justifyContent: "center" }}>
             <Wordmark fontSize={34} />
           </div>
           <div style={{ ...micro, color: "var(--text-dim)", marginTop: 10 }}>
-            Your tough but fair legal assistant
+            {tr("冷静、可靠的法律协作助手", "Your tough but fair legal assistant")}
           </div>
         </div>
 

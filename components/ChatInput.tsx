@@ -9,6 +9,7 @@ import {
 } from "@/lib/file-fuzzy";
 import { FolderIcon, getFileIcon } from "./FileIcons";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { useI18n } from "./I18nProvider";
 
 export interface AttachedImage {
   data: string;   // base64, no prefix
@@ -203,6 +204,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   draftKey,
   cwd,
 }: Props, ref) {
+  const { text } = useI18n();
   const isMobile = useIsMobile();
   // 容器级窄宽度检测：任务子页左栏窄（320-560px）但视口宽，useIsMobile 覆盖不到
   const rootRef = useRef<HTMLDivElement>(null);
@@ -1386,9 +1388,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             onPaste={handlePaste}
             placeholder={
               isStreaming && (onSteer || onFollowUp)
-                ? "Steer now / queue follow-up..."
-                : isStreaming ? "Agent is running…"
-                : "Message… / commands · @ files · /agent name task"
+                ? text("立即介入，或在完成后继续补充…", "Intervene now or queue a follow-up…")
+                : isStreaming ? text("助手正在执行…", "Assistant is running…")
+                : text("输入任务…  / 命令  ·  @ 引用文件  ·  /agent 名称 任务", "Message…  / commands  ·  @ files  ·  /agent name task")
             }
             rows={2}
             style={{
@@ -1413,14 +1415,15 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 <button
                   onClick={() => sendQueued("steer")}
                   disabled={!canQueueStreamingMessage}
-                  title={attachedImages.length ? "Image attachments cannot be queued while the agent is running" : "Interrupt the current run and inject this message now"}
+                  title={attachedImages.length ? text("执行期间不能插入图片", "Images cannot be queued while the assistant is running") : text("中止当前执行，并立即发送此消息", "Interrupt the current run and send this message now")}
                   style={{
                     display: "flex", alignItems: "center", gap: 5,
                     padding: "7px 12px",
-                    background: canQueueStreamingMessage ? "rgba(234,179,8,0.12)" : "none",
-                    border: "1px solid rgba(234,179,8,0.35)",
-                    borderRadius: 2,
-                    color: canQueueStreamingMessage ? "rgba(180,130,0,1)" : "var(--text-dim)",
+                    background: "transparent",
+                    border: "none",
+                    borderLeft: "1px solid var(--border)",
+                    borderRadius: 0,
+                    color: canQueueStreamingMessage ? "var(--accent)" : "var(--text-dim)",
                     cursor: canQueueStreamingMessage ? "pointer" : "not-allowed",
                     fontSize: 13, fontWeight: 600, letterSpacing: "-0.01em",
                     transition: "background 0.12s",
@@ -1429,21 +1432,22 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   <svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M5 1 L9 5 L5 9" /><line x1="1" y1="5" x2="9" y2="5" />
                   </svg>
-                  Steer
+                  {text("立即介入", "Intervene")}
                 </button>
               )}
               {onFollowUp && (
                 <button
                   onClick={() => sendQueued("followup")}
                   disabled={!canQueueStreamingMessage}
-                  title={attachedImages.length ? "Image attachments cannot be queued while the agent is running" : "Queue this message after the agent finishes"}
+                  title={attachedImages.length ? text("执行期间不能插入图片", "Images cannot be queued while the assistant is running") : text("当前任务完成后发送此消息", "Send this message when the current task finishes")}
                   style={{
                     display: "flex", alignItems: "center", gap: 5,
                     padding: "7px 12px",
-                    background: canQueueStreamingMessage ? "rgba(129,140,248,0.12)" : "none",
-                    border: "1px solid rgba(129,140,248,0.35)",
-                    borderRadius: 2,
-                    color: canQueueStreamingMessage ? "rgba(99,102,241,1)" : "var(--text-dim)",
+                    background: "transparent",
+                    border: "none",
+                    borderLeft: "1px solid var(--border)",
+                    borderRadius: 0,
+                    color: canQueueStreamingMessage ? "var(--text-muted)" : "var(--text-dim)",
                     cursor: canQueueStreamingMessage ? "pointer" : "not-allowed",
                     fontSize: 13, fontWeight: 600, letterSpacing: "-0.01em",
                     transition: "background 0.12s",
@@ -1453,7 +1457,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                     <line x1="5" y1="1" x2="5" y2="6" /><polyline points="2.5 3.5 5 1 7.5 3.5" />
                     <line x1="2" y1="9" x2="8" y2="9" />
                   </svg>
-                  Follow-up
+                  {text("完成后继续", "Continue after")}
                 </button>
               )}
             </div>
@@ -1461,8 +1465,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             <button
               onClick={handleSend}
               disabled={!value.trim() && !attachedImages.length}
-              title="Send"
-              aria-label="Send"
+              title={text("发送", "Send")}
+              aria-label={text("发送", "Send")}
               style={{
                 flexShrink: 0,
                 alignSelf: "flex-end",
@@ -1507,7 +1511,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={isStreaming}
-              title="Attach image"
+              title={text("添加图片", "Attach image")}
               style={{
                 flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
                 width: 32, height: 32, padding: 0,
