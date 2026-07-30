@@ -34,7 +34,7 @@ function nowString(): string {
   return new Date().toISOString();
 }
 
-function createDeadlineFile(caseDir: string, title: string, date: string): string {
+function createDeadlineFile(caseDir: string, title: string, date: string, status = "待办"): string {
   const dir = join(caseDir, "期限");
   mkdirSync(dir, { recursive: true });
   const path = uniqueFileName(dir, `${date}_${title.replace(/\s+/g, "_")}`, ".md");
@@ -42,7 +42,7 @@ function createDeadlineFile(caseDir: string, title: string, date: string): strin
     path,
     `---
 事项类型: 期限
-状态: 待办
+状态: ${status}
 截止日期: ${date}
 描述: |
   ${title}
@@ -162,6 +162,9 @@ export function analyzeCaseMaterials(
   const chroniclePath = createChronicleEntry(caseItem.vaultPath, date, chronicleLines);
 
   // Infer deadlines and persist them both as files and in the store.
+  // Projected deadlines land as "proposed" (待确认): they are legal-rule
+  // projections of a file-name date, not confirmed dates, so the lawyer must
+  // confirm them in the Dates view before they count.
   const inferredDeadlines = inferDeadlines(classifications);
   const createdDeadlines: Array<{ deadline: Deadline; filePath: string }> = [];
   for (const inferred of inferredDeadlines) {
@@ -172,20 +175,24 @@ export function analyzeCaseMaterials(
       title: inferred.title,
       date: inferred.date,
       type: inferred.type,
-      status: "pending",
+      status: "proposed",
       createdAt: nowString(),
     };
-    const filePath = createDeadlineFile(caseItem.vaultPath, inferred.title, inferred.date);
+    const filePath = createDeadlineFile(caseItem.vaultPath, inferred.title, inferred.date, "待确认");
+    deadline.vaultPath = filePath;
     project.store.deadlines.push(deadline);
     createdDeadlines.push({ deadline, filePath });
   }
 
   // Always create a review task when new materials arrive.
+  const proposedLines = inferredDeadlines.length
+    ? `\n\n本次推算出 ${inferredDeadlines.length} 个待确认期限，请到「日程」核对：\n${inferredDeadlines.map((d) => `- ${d.title}（${d.date}）`).join("\n")}`
+    : "";
   const reviewTask: Task = {
     id: crypto.randomUUID(),
     caseId: caseItem.id,
     title: "审阅并分类新到材料",
-    detail: `本次收到 ${classifications.length} 份材料，请核对自动分类结果并补充关键信息。`,
+    detail: `本次收到 ${classifications.length} 份材料，请核对自动分类结果并补充关键信息。${proposedLines}`,
     assignee: "Justice",
     status: "待办",
     priority: "medium",

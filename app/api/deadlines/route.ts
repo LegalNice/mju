@@ -2,12 +2,20 @@ import { NextResponse } from "next/server";
 import { writeStore } from "@/lib/mju-store";
 import type { Deadline, DeadlineStatus, DeadlineType } from "@/lib/mju-models";
 import { findCase, getProjectStore, isNonEmptyString, isProjectStore, isValidDate } from "@/lib/mju-route-utils";
+import { updateVaultItemStatus } from "@/lib/mju-vault-items";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/** store DeadlineStatus → Vault 期限 frontmatter 中文「状态」值 */
+const VAULT_DEADLINE_STATUS: Record<DeadlineStatus, string> = {
+  proposed: "待确认",
+  pending: "待处理",
+  done: "已完成",
+  missed: "已过期",
+};
+const deadlineStatuses = new Set<DeadlineStatus>(["proposed", "pending", "done", "missed"]);
 const deadlineTypes = new Set<DeadlineType>(["court", "filing", "client", "internal"]);
-const deadlineStatuses = new Set<DeadlineStatus>(["pending", "done", "missed"]);
 type DeadlineBody = Partial<Deadline> & { cwd?: string };
 
 function validType(value: unknown): value is DeadlineType {
@@ -81,6 +89,18 @@ export async function PATCH(req: Request) {
     }
     project.store.deadlines[index] = next;
     writeStore(project.cwd, project.store);
+    // Mirror status changes into the linked Vault 期限 file (if any).
+    if (next.vaultPath && body.status !== undefined) {
+      try {
+        updateVaultItemStatus(project.cwd, next.vaultPath, "deadline", VAULT_DEADLINE_STATUS[next.status]);
+      } catch {
+        // Vault file may have been moved or deleted; the store remains the source of truth.
+      }
+      // Invalidate the vault-items cache so the Dates view sees the new status.
+      if (globalThis.__mjuVaultItemsCache?.cwd === project.cwd) {
+        globalThis.__mjuVaultItemsCache = undefined;
+      }
+    }
     return NextResponse.json({ success: true, deadline: next });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
