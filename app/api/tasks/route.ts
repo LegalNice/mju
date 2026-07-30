@@ -7,7 +7,7 @@ import { createExecutionRecord, ensureVaultTasks, getUnifiedTasks, persistTaskTo
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const taskStatuses = new Set<TaskStatus>(["待办", "进行中", "完成", "取消"]);
+const taskStatuses = new Set<TaskStatus>(["待办", "进行中", "待验收", "完成", "取消"]);
 const taskPriorities = new Set<TaskPriority>(["high", "medium", "low"]);
 const deliverableTypes = new Set<DeliverableType>([
   "internal-opinion", "external-opinion", "docx-revision", "pleading", "evidence-list", "trial-outline", "research-report", "other",
@@ -80,7 +80,10 @@ export async function POST(req: Request) {
     }
 
     const now = new Date().toISOString();
-    const status = body.status ?? "待办";
+    // A bound session means this task has already been handed to an agent.
+    // Keep it discoverable in the active column even if a caller omitted the
+    // status field while creating the task after starting the session.
+    const status = body.status ?? (body.sessionId?.trim() ? "进行中" : "待办");
     const task: Task = {
       id: crypto.randomUUID(),
       caseId: body.caseId,
@@ -171,7 +174,16 @@ export async function PATCH(req: Request) {
       next.deliverableType = body.deliverableType;
     }
     if (body.deliverablePath !== undefined) next.deliverablePath = body.deliverablePath.trim() || undefined;
-    if (body.sessionId !== undefined) next.sessionId = body.sessionId.trim() || undefined;
+    if (body.sessionId !== undefined) {
+      const sessionId = body.sessionId.trim() || undefined;
+      next.sessionId = sessionId;
+      // Binding a pending task to a live agent session starts the task. Do not
+      // override an explicit status transition (for example, a manual reset or
+      // completion) sent in the same request.
+      if (sessionId && current.status === "待办" && body.status === undefined) {
+        next.status = "进行中";
+      }
+    }
     if (body.originPrompt !== undefined) next.originPrompt = body.originPrompt;
     if (body.relatedFiles !== undefined) {
       if (!Array.isArray(body.relatedFiles) || !body.relatedFiles.every(isNonEmptyString)) return NextResponse.json({ error: "relatedFiles must be a string array" }, { status: 400 });

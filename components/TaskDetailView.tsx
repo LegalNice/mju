@@ -63,7 +63,7 @@ function treeHasBranch(nodes: SessionTreeNode[]): boolean {
   return nodes.some((n) => n.children.length > 1 || treeHasBranch(n.children));
 }
 
-const STATUS_OPTIONS: TaskStatus[] = ["待办", "进行中", "完成"];
+const STATUS_OPTIONS: TaskStatus[] = ["待办", "进行中", "待验收", "完成"];
 
 const DELIVERABLE_STATUS_LABEL: Record<DeliverableStatus, string> = {
   draft: "草稿",

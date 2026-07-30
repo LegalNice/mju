@@ -274,7 +274,7 @@ test("previews and starts a case-compatible workflow exactly once", async (t) =>
   assert.equal(refreshed.body.workflows[0].started, true);
 });
 
-test("binds a session and origin prompt to a task via POST and PATCH", async (t) => {
+test("moves pending tasks to in progress when an agent session is bound", async (t) => {
   const cwd = makeProject(t);
   const caseItem = await createCase(cwd);
 
@@ -282,11 +282,12 @@ test("binds a session and origin prompt to a task via POST and PATCH", async (t)
     method: "POST",
     body: {
       cwd, caseId: caseItem.id, title: "判例检索", assignee: "auto",
-      status: "进行中", sessionId: "sess-123", originPrompt: "帮我检索相关判例",
+      sessionId: "sess-123", originPrompt: "帮我检索相关判例",
     },
   });
   assert.equal(created.status, 200);
   assert.equal(created.body.task.sessionId, "sess-123");
+  assert.equal(created.body.task.status, "进行中");
   assert.equal(created.body.task.originPrompt, "帮我检索相关判例");
   assert.equal(readStore(cwd)?.tasks[0].sessionId, "sess-123");
 
@@ -297,6 +298,20 @@ test("binds a session and origin prompt to a task via POST and PATCH", async (t)
   assert.equal(rebound.status, 200);
   assert.equal(rebound.body.task.sessionId, "sess-456");
   assert.equal(rebound.body.task.originPrompt, "帮我检索相关判例");
+
+  const pending = await call(tasksRoute.POST, "/api/tasks", {
+    method: "POST",
+    body: { cwd, caseId: caseItem.id, title: "开具律师费发票", assignee: "auto" },
+  });
+  assert.equal(pending.body.task.status, "待办");
+
+  const started = await call(tasksRoute.PATCH, "/api/tasks", {
+    method: "PATCH",
+    body: { cwd, id: pending.body.task.id, sessionId: "sess-awaiting-client" },
+  });
+  assert.equal(started.status, 200);
+  assert.equal(started.body.task.status, "进行中");
+  assert.match(readFileSync(started.body.task.vaultPath, "utf8"), /状态: 进行中/);
 
   const invalid = await call(tasksRoute.POST, "/api/tasks", {
     method: "POST",
