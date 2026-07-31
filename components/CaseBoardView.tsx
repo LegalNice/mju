@@ -1227,7 +1227,7 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
               border: "1px solid var(--border)",
               borderRadius: 2,
               background: "var(--bg)",
-              boxShadow: "0 20px 60px rgba(0,0,0,0.28)",
+              boxShadow: "var(--overlay-shadow)",
               overflow: "hidden",
             }}
           >

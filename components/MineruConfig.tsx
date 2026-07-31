@@ -135,7 +135,7 @@ export function MineruConfig({ onClose }: { onClose: () => void }) {
           border: "1px solid var(--border)",
           borderRadius: 2,
           background: "var(--bg)",
-          boxShadow: "0 24px 64px rgba(0,0,0,.18)",
+          boxShadow: "var(--overlay-shadow)",
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>

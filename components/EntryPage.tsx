@@ -51,6 +51,14 @@ interface ClassifyResult {
   deadline: string | null;
 }
 
+/** Zine 插画候选：入口页封面的线刻主体，右侧出血摆放，每次挂载随机一张（useEffect 内选取避免 hydration 不一致）。
+ *  src = 圆珠笔蓝（paper），night = 浅长春花蓝（night），ghost = VHS 青重影。 */
+const ZINE_ILLOS = [
+  { src: "/illustrations/stamp.webp", night: "/illustrations/stamp-night.webp", ghost: "/illustrations/stamp-ghost.webp", right: "4%", bottom: "8%", rot: "6deg", size: 230 },
+  { src: "/illustrations/papers.webp", night: "/illustrations/papers-night.webp", ghost: "/illustrations/papers-ghost.webp", right: "7%", bottom: "30%", rot: "-5deg", size: 250 },
+  { src: "/illustrations/pen.webp", night: "/illustrations/pen-night.webp", ghost: "/illustrations/pen-ghost.webp", right: "3%", bottom: "14%", rot: "-9deg", size: 210 },
+] as const;
+
 /** One row in the "近期在办" list, merged from tasks, deadlines and schedules. */
 interface AgendaItem {
   /** YYYY-MM-DD, used for sorting, display and overdue math */
@@ -470,6 +478,10 @@ export function EntryPage() {
   const [launching, setLaunching] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [zineIllo, setZineIllo] = useState<(typeof ZINE_ILLOS)[number] | null>(null);
+  useEffect(() => {
+    setZineIllo(ZINE_ILLOS[Math.floor(Math.random() * ZINE_ILLOS.length)]);
+  }, []);
 
   const detectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -911,10 +923,18 @@ export function EntryPage() {
     }
   };
 
+  // Zine archive microtext under the hero: date · active case count.
+  const now = new Date();
+  const dateStamp = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")}`;
+  const archiveLine = project
+    ? `${dateStamp} · ${tr(`${cases.length} 件在办`, `${cases.length} active`)}`
+    : dateStamp;
   return (
     <div
+      className="mju-entry"
       style={{
         minHeight: "100dvh",
+        position: "relative",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
@@ -926,8 +946,61 @@ export function EntryPage() {
         opacity: leaving ? 0 : 1,
         transform: leaving ? "translateY(-24px)" : "none",
         pointerEvents: leaving ? "none" : "auto",
+        overflow: "hidden",
       }}
     >
+      {/* CRT 扫描线 + 出格刊头 + 左缘竖排档案字（纯装饰层） */}
+      <div aria-hidden="true" className="zine-scan" />
+      <div aria-hidden="true" className="zine-masthead">μ</div>
+      <div aria-hidden="true" className="zine-edge">
+        MJU AGENTS — LEGAL ARCHIVE — {dateStamp}
+      </div>
+      {zineIllo && !leaving && (
+        <>
+          {/* VHS 青重影先印，蓝墨主版错位叠上——90s 色差 */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={zineIllo.ghost}
+            alt=""
+            aria-hidden="true"
+            className="zine-illo zine-illo-ghost"
+            style={{
+              right: zineIllo.right,
+              bottom: zineIllo.bottom,
+              transform: "translate(7px, -6px)",
+              "--illo-rot": zineIllo.rot,
+              "--illo-size": `${zineIllo.size}px`,
+            } as CSSProperties}
+          />
+          {/* 主版明暗两套：CSS 按 html.dark 切换显示 */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={zineIllo.src}
+            alt=""
+            aria-hidden="true"
+            className="zine-illo illo-paper"
+            style={{
+              right: zineIllo.right,
+              bottom: zineIllo.bottom,
+              "--illo-rot": zineIllo.rot,
+              "--illo-size": `${zineIllo.size}px`,
+            } as CSSProperties}
+          />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={zineIllo.night}
+            alt=""
+            aria-hidden="true"
+            className="zine-illo illo-night"
+            style={{
+              right: zineIllo.right,
+              bottom: zineIllo.bottom,
+              "--illo-rot": zineIllo.rot,
+              "--illo-size": `${zineIllo.size}px`,
+            } as CSSProperties}
+          />
+        </>
+      )}
       <style>{`
         .mju-entry-composer:focus-within { border-color: var(--accent); }
         .mju-entry-send:hover:not(:disabled) { background: var(--accent-hover); }
@@ -944,15 +1017,35 @@ export function EntryPage() {
         .mju-entry-create:hover:not(:disabled) { background: var(--accent-hover); }
       `}</style>
 
-      <div style={{ width: "min(640px, 92vw)", display: "flex", flexDirection: "column" }}>
-        <div style={{ textAlign: "center", position: "relative" }}>
+      <div className="mju-entry-shift" style={{ width: "min(600px, 92vw)", display: "flex", flexDirection: "column" }}>
+        <div style={{ textAlign: "left", position: "relative" }}>
           <div style={{ position: "absolute", right: 0, top: 0 }}><LanguageToggle /></div>
-          <div style={{ display: "flex", justifyContent: "center" }}>
-            <Wordmark fontSize={34} />
+          <div style={{ position: "relative", display: "inline-block" }}>
+            <Wordmark fontSize={52} />
           </div>
-          <div style={{ ...micro, color: "var(--text-dim)", marginTop: 10 }}>
+          <div
+            style={{
+              fontFamily: 'Georgia, "Times New Roman", serif',
+              fontStyle: "italic",
+              fontSize: 15,
+              color: "var(--text-muted)",
+              marginTop: 14,
+            }}
+          >
             {tr("冷静、可靠的法律协作助手", "Your tough but fair legal assistant")}
           </div>
+          <div
+            style={{
+              marginTop: 12,
+              fontFamily: "var(--font-mono)",
+              fontSize: 10,
+              letterSpacing: "0.18em",
+              color: "var(--text-dim)",
+            }}
+          >
+            {archiveLine}
+          </div>
+          <div className="hairline" style={{ margin: "18px 0 0" }} />
         </div>
 
         {projects !== null && projects.length === 0 && (
@@ -1193,10 +1286,11 @@ export function EntryPage() {
               className="mju-entry-composer"
               style={{
                 marginTop: 12,
-                border: "1px solid var(--border)",
-                borderRadius: 2,
+                border: "1.5px solid color-mix(in srgb, var(--accent) 55%, transparent)",
+                borderRadius: 0,
                 padding: 16,
                 transition: "border-color .15s",
+                boxShadow: "9px 9px 0 color-mix(in srgb, var(--accent) 16%, transparent)",
               }}
             >
               <textarea
@@ -1321,7 +1415,7 @@ export function EntryPage() {
                     border: "none",
                     borderRadius: 2,
                     background: "var(--accent)",
-                    color: "#fff",
+                    color: "var(--on-accent, #fff)",
                     fontSize: 15,
                     cursor: launching || !text.trim() ? "default" : "pointer",
                     opacity: launching || !text.trim() ? 0.4 : 1,

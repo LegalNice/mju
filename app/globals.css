@@ -19,39 +19,187 @@
 }
 
 :root {
-  --bg: #ffffff;
-  --bg-panel: #f5f5f4;
-  --bg-hover: #ececea;
-  --bg-selected: #e4e4e2;
-  --border: #e5e5e3;
-  --text: #111111;
-  --text-muted: #6b6b6b;
-  --text-dim: #a8a8a8;
-  --accent: #e30613;
-  --accent-hover: #b30510;
-  --user-bg: #f5f5f4;
-  --assistant-bg: #ffffff;
-  --tool-bg: #fafafa;
-  --bg-subtle: rgba(17,17,17,0.04);
-  --glow: rgba(227,6,19,0.08);
+  /* 纸感 Zine：仿旧纸暖底 + 暖墨黑 + 唯一信号红（sketches/006-zine） */
+  --bg: #faf6ec;
+  --bg-panel: #f2ecdc;
+  --bg-hover: #eae3d0;
+  --bg-selected: #e1d9c2;
+  --border: #ddd4bc;
+  --text: #211d16;
+  --text-muted: #6f6858;
+  --text-dim: #a89f88;
+  /* 圆珠笔蓝墨：放弃信号红后的唯一功能色（2026-07-31 方向调整） */
+  --accent: #2b3fd6;
+  --accent-hover: #2233b0;
+  --on-accent: #ffffff;
+  --user-bg: #f2ecdc;
+  --assistant-bg: #faf6ec;
+  --tool-bg: #f6f1e4;
+  --bg-subtle: rgba(33,29,22,0.045);
+  --glow: rgba(43,63,214,0.08);
+  --warn: #b48200;
+  --ok: #059669;
+  --grain-opacity: 0.055;
+  --grain-blend: multiply;
+  /* 第二油墨：VHS 青，只做装饰色差 */
+  --ink2: #0fa8bd;
+  --ink2-soft: rgba(15,168,189,0.16);
+  --overlay-shadow:
+    0 0 0 1px rgba(33,29,22,0.05),
+    0 2px 6px rgba(33,29,22,0.06),
+    0 16px 44px rgba(33,29,22,0.14);
+  --ease-out: cubic-bezier(.2,.8,.2,1);
 }
 
 html.dark {
-  --bg: #111111;
-  --bg-panel: #1a1a1a;
-  --bg-hover: #242424;
-  --bg-selected: #2e2e2e;
-  --border: #2e2e2e;
-  --text: #f5f5f4;
-  --text-muted: #a3a3a3;
-  --text-dim: #5c5c5c;
-  --accent: #ff3b30;
-  --accent-hover: #ff6159;
-  --user-bg: #1a1a1a;
-  --assistant-bg: #111111;
-  --tool-bg: #161616;
-  --bg-subtle: rgba(245,245,244,0.05);
-  --glow: rgba(255,59,48,0.12);
+  --bg: #1a1712;
+  --bg-panel: #221e17;
+  --bg-hover: #2b261d;
+  --bg-selected: #342d21;
+  --border: #38311f;
+  --text: #f0ead9;
+  --text-muted: #a39a85;
+  --text-dim: #615a49;
+  --accent: #7d92ff;
+  --accent-hover: #9aabff;
+  --on-accent: #10142e;
+  --user-bg: #221e17;
+  --assistant-bg: #1a1712;
+  --tool-bg: #1e1a14;
+  --bg-subtle: rgba(240,234,217,0.05);
+  --glow: rgba(125,146,255,0.12);
+  --warn: #e0b040;
+  --ok: #34d399;
+  --grain-opacity: 0.07;
+  --grain-blend: screen;
+  --ink2: #37c8de;
+  --ink2-soft: rgba(55,200,222,0.18);
+  --overlay-shadow:
+    0 0 0 1px rgba(240,234,217,0.06),
+    0 2px 6px rgba(0,0,0,0.3),
+    0 16px 44px rgba(0,0,0,0.5);
+}
+
+/* 纸纹颗粒：SVG feTurbulence，multiply 吃进纸里，night 用 screen 提亮 */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  pointer-events: none;
+  mix-blend-mode: var(--grain-blend);
+  opacity: var(--grain-opacity);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='160' height='160' filter='url(%23n)' opacity='0.6'/></svg>");
+}
+
+/* 套色错位（misregistration）：蓝墨 + VHS 青，只给品牌字标与页面大标题 */
+.misreg {
+  text-shadow: 1px 0 0 rgba(43,63,214,0.35), -1px 0 0 rgba(15,168,189,0.30);
+}
+html.dark .misreg {
+  text-shadow: 1px 0 0 rgba(125,146,255,0.4), -1px 0 0 rgba(55,200,222,0.28);
+}
+
+/* 短 hairline 分隔线：2.5rem 局部细线，替代整宽边框 */
+.hairline {
+  width: 2.5rem;
+  border-top: 1px solid color-mix(in srgb, var(--text) 40%, transparent);
+}
+
+/* Zine 插画 cluster：铜版线刻，圆珠笔蓝墨 multiply 吃进纸面；
+   night 换浅长春花蓝正常混合。ghost 层是同图的 VHS 青版，平移几像素——色差重影。 */
+.zine-illo {
+  position: absolute;
+  width: var(--illo-size, 200px);
+  mix-blend-mode: multiply;
+  pointer-events: none;
+  user-select: none;
+  animation: zine-illo-in 0.55s var(--ease-out) both;
+}
+.zine-illo-ghost {
+  opacity: 0.45;
+  animation: none;
+}
+.illo-night { display: none; }
+html.dark .illo-night { display: block; mix-blend-mode: normal; opacity: 0.9; }
+html.dark .illo-paper { display: none; }
+html.dark .zine-illo-ghost { mix-blend-mode: normal; opacity: 0.3; }
+@keyframes zine-illo-in {
+  from { opacity: 0; transform: translateY(8px) rotate(var(--illo-rot, -4deg)); }
+  to   { opacity: 1; transform: translateY(0)    rotate(var(--illo-rot, -4deg)); }
+}
+
+/* 出格刊头：巨型 μ 蓝墨描边字出血裁切（仅入口页装饰层） */
+.zine-masthead {
+  position: absolute;
+  top: -0.28em;
+  right: -0.1em;
+  font-family: Georgia, "Times New Roman", serif;
+  font-style: italic;
+  font-weight: 700;
+  font-size: clamp(220px, 30vw, 460px);
+  line-height: 1;
+  color: transparent;
+  -webkit-text-stroke: 1.5px color-mix(in srgb, var(--accent) 32%, transparent);
+  transform: rotate(4deg);
+  pointer-events: none;
+  user-select: none;
+}
+html.dark .zine-masthead {
+  -webkit-text-stroke-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+/* 左缘竖排档案字（仅入口页装饰层） */
+.zine-edge {
+  position: absolute;
+  left: 20px;
+  top: 50%;
+  transform: translateY(-50%) rotate(180deg);
+  writing-mode: vertical-rl;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.24em;
+  color: color-mix(in srgb, var(--accent) 48%, transparent);
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+}
+
+/* CRT 扫描线：90s 电子噪音，只留给 night（paper 用纯纸纹颗粒） */
+.zine-scan {
+  display: none;
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, rgba(240,234,217,0.04) 0 1px, transparent 1px 4px);
+  pointer-events: none;
+  user-select: none;
+}
+html.dark .zine-scan { display: block; }
+
+/* 入口封面字标换衬线斜体（编辑衬线感），应用内仍用 UI 无衬线 */
+.mju-entry .mju-wordmark-text {
+  font-family: Georgia, "Times New Roman", serif;
+  font-style: italic;
+  letter-spacing: 0.05em;
+}
+
+/* 宽屏下入口内容列左移，给右侧出血装饰让位 */
+@media (min-width: 900px) {
+  .mju-entry-shift { margin-right: 15vw; }
+}
+@media (max-width: 899px) {
+  .zine-masthead, .zine-edge { display: none; }
+}
+@media (max-width: 640px) {
+  .zine-illo { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }
 
 .chat-composer {
@@ -657,7 +805,7 @@ span.linenumber {
   .sidebar-container {
     position: relative;
     overflow: hidden;
-    transition: width 0.2s ease, min-width 0.2s ease;
+    transition: width 0.2s var(--ease-out), min-width 0.2s var(--ease-out);
   }
   .sidebar-container.sidebar-open {
     width: 280px;
@@ -680,7 +828,7 @@ span.linenumber {
 @media (min-width: 641px) {
   .right-panel-container {
     overflow: hidden;
-    transition: width 0.2s ease, min-width 0.2s ease;
+    transition: width 0.2s var(--ease-out), min-width 0.2s var(--ease-out);
     flex-shrink: 0;
   }
   .right-panel-container.right-panel-open {
@@ -711,7 +859,7 @@ span.linenumber {
     bottom: 0;
     width: 280px;
     max-width: 85vw;
-    transition: transform 0.25s ease, box-shadow 0.25s ease;
+    transition: transform 0.25s var(--ease-out), box-shadow 0.25s var(--ease-out);
   }
   .sidebar-container.sidebar-open {
     transform: translateX(0);
@@ -724,7 +872,7 @@ span.linenumber {
 
   .right-panel-container {
     overflow: hidden;
-    transition: width 0.2s ease, min-width 0.2s ease;
+    transition: width 0.2s var(--ease-out), min-width 0.2s var(--ease-out);
     flex-shrink: 0;
   }
   .right-panel-container.right-panel-open {
