@@ -9,6 +9,7 @@ export function Wordmark({ fontSize = 15 }: { fontSize?: number }) {
     <span style={{ display: "inline-flex", alignItems: "baseline", gap: fontSize * 0.45, userSelect: "none" }}>
       <span
         aria-hidden="true"
+        className="misreg"
         style={{
           fontFamily: 'Georgia, "Times New Roman", serif',
           fontSize: fontSize * 1.34,
@@ -22,7 +23,7 @@ export function Wordmark({ fontSize = 15 }: { fontSize?: number }) {
       >
         μ
       </span>
-      <span style={{ fontWeight: 700, fontSize, color: "var(--text)", letterSpacing: "0.025em" }}>
+      <span className="mju-wordmark-text" style={{ fontWeight: 700, fontSize, color: "var(--text)", letterSpacing: "0.025em" }}>
         Mju AGENTS
       </span>
     </span>
