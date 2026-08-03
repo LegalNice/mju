@@ -50,6 +50,45 @@ async function createCase(cwd, title = "测试案件") {
   return result.body.case;
 }
 
+test("creates litigation cases on the normalized default stage and tracks stage history", async (t) => {
+  const cwd = makeProject(t);
+  const created = await createCase(cwd);
+  assert.equal(created.stage, "接案");
+  assert.equal(created.stageIndex, 0);
+  assert.deepEqual(created.stageHistory.map((entry) => entry.stage), ["接案"]);
+
+  const clamped = await call(casesRoute.PATCH, "/api/cases", {
+    method: "PATCH", body: { cwd, id: created.id, stageIndex: 99 },
+  });
+  assert.equal(clamped.status, 200);
+  assert.equal(clamped.body.case.stageIndex, 7);
+  assert.equal(clamped.body.case.stage, "结案");
+
+  const next = await call(casesRoute.PATCH, "/api/cases", {
+    method: "PATCH", body: { cwd, id: created.id, action: "next" },
+  });
+  assert.equal(next.status, 200);
+  assert.equal(next.body.case.stageIndex, 7, "next clamps at the final stage");
+
+  const previous = await call(casesRoute.PATCH, "/api/cases", {
+    method: "PATCH", body: { cwd, id: created.id, action: "previous" },
+  });
+  assert.equal(previous.status, 200);
+  assert.equal(previous.body.case.stageIndex, 6);
+
+  const undo = await call(casesRoute.PATCH, "/api/cases", {
+    method: "PATCH", body: { cwd, id: created.id, action: "undo" },
+  });
+  assert.equal(undo.status, 200);
+  assert.equal(undo.body.case.stageIndex, 7);
+  assert.deepEqual(undo.body.case.stageHistory.map((entry) => entry.stage), ["接案", "结案"]);
+
+  const invalid = await call(casesRoute.PATCH, "/api/cases", {
+    method: "PATCH", body: { cwd, id: created.id, stageIndex: "2" },
+  });
+  assert.equal(invalid.status, 400);
+});
+
 test("runs task CRUD with strict validation and persisted completion state", async (t) => {
   const cwd = makeProject(t);
   const caseItem = await createCase(cwd);

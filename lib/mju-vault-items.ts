@@ -22,6 +22,8 @@ export interface VaultItem {
   caseId?: string;
   filePath: string;
   source: "vault";
+  /** Vault-native 状态字符串（如「待确认」「待处理」「完成」）。任务/期限条目有。 */
+  status?: string;
 }
 
 /**
@@ -295,6 +297,33 @@ export function updateVaultItemDate(
   atomicWrite(target, content);
 }
 
+/**
+ * Update the 状态 frontmatter field of a Vault-native deadline while retaining
+ * every other field and the Markdown body. Used by the proposed→pending
+ * confirmation flow. The file must live under the project's ops/ directory.
+ */
+export function updateVaultItemStatus(
+  cwd: string,
+  filePath: string,
+  kind: "deadline",
+  status: string,
+): void {
+  const opsRoot = resolve(cwd, "ops");
+  const target = resolve(filePath);
+  if (!target.startsWith(`${opsRoot}/`)) throw new Error("Vault item is outside the project ops directory");
+
+  const existing = rawWithFrontmatter(target);
+  if (!existing) throw new Error("Vault item file is missing or has invalid frontmatter");
+  const folderKind = ITEM_DIRS.get(basename(join(target, "..")));
+  const typeRaw = existing.frontmatter["事项类型"];
+  const itemKind = typeRaw === "期限" ? "deadline" : typeRaw === "日程" ? "schedule" : folderKind;
+  if (itemKind !== kind) throw new Error("Vault item type does not match");
+
+  const frontmatter = { ...existing.frontmatter, "状态": status };
+  const content = `---\n${dumpYaml(frontmatter, { lineWidth: -1 })}---\n\n${existing.body}`;
+  atomicWrite(target, content);
+}
+
 /** Scan ops/** for 任务/期限/日程 item files and normalize their frontmatter. */
 export function scanVaultItems(cwd: string, store: MjuStore): VaultItem[] {
   const opsDir = join(cwd, "ops");
@@ -325,6 +354,7 @@ export function scanVaultItems(cwd: string, store: MjuStore): VaultItem[] {
       caseId: caseForPath(store, filePath)?.id,
       filePath,
       source: "vault",
+      status: status || undefined,
     });
   }
   return items;

@@ -60,10 +60,13 @@ test("analyzes materials, moves high-confidence pleadings, and creates deadlines
   assert.equal(existsSync(join(caseItem.vaultPath, "文书", "起诉状-2026-08-01.md")), true);
   assert.equal(existsSync(join(materialsDir, "起诉状-2026-08-01.md")), false);
 
-  // Court document with date should create a deadline.
+  // Court document (判决书) with date creates a projected deadline: appeal
+  // window = 文书日期 +15日, status "proposed" (待律师确认).
   assert.equal(result.body.createdDeadlines.length, 1);
-  assert.equal(result.body.createdDeadlines[0].deadline.date, "2026-08-15");
+  assert.equal(result.body.createdDeadlines[0].deadline.date, "2026-08-30");
   assert.equal(result.body.createdDeadlines[0].deadline.type, "court");
+  assert.equal(result.body.createdDeadlines[0].deadline.status, "proposed");
+  assert.ok(result.body.createdDeadlines[0].deadline.vaultPath);
   assert.equal(existsSync(result.body.createdDeadlines[0].filePath), true);
 
   // A review task should be created.
