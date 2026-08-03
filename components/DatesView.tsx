@@ -962,7 +962,7 @@ export function DatesView() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(7, 1fr)",
+                gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
                 marginBottom: 4,
               }}
             >
@@ -978,7 +978,7 @@ export function DatesView() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(7, 1fr)",
+                gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
                 gap: 1,
                 background: "var(--border)",
                 border: "1px solid var(--border)",
@@ -996,9 +996,11 @@ export function DatesView() {
                     onClick={() => jumpToDay(date)}
                     style={{
                       background: "var(--bg)",
+                      minWidth: 0,
                       minHeight: 92,
                       padding: "6px 8px",
                       cursor: "pointer",
+                      overflow: "hidden",
                     }}
                   >
                     <div
