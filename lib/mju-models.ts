@@ -83,7 +83,7 @@ export interface Case {
   createdAt: string;
 }
 
-export type TaskStatus = "待办" | "进行中" | "完成" | "取消";
+export type TaskStatus = "待办" | "进行中" | "待验收" | "完成" | "取消";
 export type TaskPriority = "high" | "medium" | "low";
 export type DeliverableType =
   | "internal-opinion"

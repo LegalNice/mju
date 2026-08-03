@@ -25,7 +25,7 @@ const MICRO: CSSProperties = {
   textTransform: "uppercase",
 };
 
-const COLUMNS: Array<Exclude<TaskStatus, "取消">> = ["待办", "进行中", "完成"];
+const COLUMNS: Array<Exclude<TaskStatus, "取消">> = ["待办", "进行中", "待验收", "完成"];
 
 const CASE_TYPE_LABEL: Record<Case["type"], string> = {
   litigation: "争议解决",
@@ -320,6 +320,7 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [caseQuery, setCaseQuery] = useState("");
   const [runningSessionIds, setRunningSessionIds] = useState<Set<string>>(new Set());
+  const prevRunningRef = useRef<Set<string>>(new Set());
   const [importingMaterials, setImportingMaterials] = useState(false);
   const [uploadResult, setUploadResult] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -538,6 +539,44 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
     };
     return () => source.close();
   }, []);
+
+  // Auto-transition session-bound tasks between 进行中 ↔ 待验收 based on
+  // running/idle transitions of their agent sessions.
+  const caseTasksRef = useRef(caseTasks);
+  caseTasksRef.current = caseTasks;
+  useEffect(() => {
+    const prev = prevRunningRef.current;
+    const curr = runningSessionIds;
+    prevRunningRef.current = curr;
+
+    const stopped: string[] = [];
+    const started: string[] = [];
+    for (const id of prev) { if (!curr.has(id)) stopped.push(id); }
+    for (const id of curr) { if (!prev.has(id)) started.push(id); }
+
+    if (stopped.length === 0 && started.length === 0) return;
+
+    const tasks = caseTasksRef.current;
+    for (const sessionId of stopped) {
+      const task = tasks.find((t) => t.sessionId === sessionId && t.status === "进行中");
+      if (!task) continue;
+      fetch("/api/tasks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cwd, id: task.id, status: "待验收" }),
+      }).catch(() => {});
+    }
+    for (const sessionId of started) {
+      const task = tasks.find((t) => t.sessionId === sessionId && t.status === "待验收");
+      if (!task) continue;
+      fetch("/api/tasks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cwd, id: task.id, status: "进行中" }),
+      }).catch(() => {});
+    }
+  }, [runningSessionIds, cwd]);
+  
 
   // 记住最后查看的案件，供 /board 索引页直接跳转
   useEffect(() => {
@@ -1052,7 +1091,7 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
           return (
             <section key={status} className="case-task-column">
               <h2 className="case-task-column-header">
-                <span>{tr(status, status === "待办" ? "To do" : status === "进行中" ? "In progress" : "Done")}</span>
+                <span>{tr(status, status === "待办" ? "To do" : status === "进行中" ? "In progress" : status === "待验收" ? "Review" : "Done")}</span>
                 <span>{columnTasks.length}</span>
               </h2>
               {columnTasks.map((task) => {
@@ -1088,6 +1127,24 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
                         </span>
                       </div>
                     </Link>
+                    {status === "待验收" && (
+                      <div style={{ display: "flex", gap: 6, padding: "8px 14px 4px" }}>
+                        <button
+                          type="button"
+                          onClick={() => patchTask(task.id, { status: "完成" })}
+                          style={{ ...MICRO, padding: "4px 10px", border: "1px solid var(--text)", borderRadius: 2, background: "var(--text)", color: "var(--bg)", cursor: "pointer" }}
+                        >
+                          {tr("验收通过", "Accept")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => patchTask(task.id, { status: "进行中" })}
+                          style={{ ...MICRO, padding: "4px 10px", border: "1px solid var(--border)", borderRadius: 2, background: "transparent", color: "var(--text-muted)", cursor: "pointer" }}
+                        >
+                          {tr("继续处理", "Revise")}
+                        </button>
+                      </div>
+                    )}
                     <DotsButton
                       visible={hoveredTaskId === task.id || menuOpenForTask}
                       onClick={() => toggleTaskMenu(task.id)}
