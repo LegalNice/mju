@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { NextResponse } from "next/server";
 import { readStore, writeStore, ensureInboxCase } from "@/lib/mju-store";
 import { ensureCanonicalStructure, ensureCaseSkeleton, hasCanonicalStructure } from "@/lib/mju-guidance";
-import { DEFAULT_LITIGATION_STAGES, litigationStageIndexFor, normalizeLitigationStageIndex, type Case, type CaseType } from "@/lib/mju-models";
+import { DEFAULT_LITIGATION_STAGES, litigationStageIndexFor, normalizeStageIndex, resolveCaseStages, type Case, type CaseType } from "@/lib/mju-models";
 import { isNonEmptyString } from "@/lib/mju-route-utils";
 
 export const runtime = "nodejs";
@@ -26,7 +26,11 @@ function parseCaseType(value: unknown): CaseType {
 
 type CaseBody = Partial<Case> & {
   cwd?: string;
-  action?: "ensure_inbox" | "undo" | "undo_stage" | "next" | "previous";
+  action?: "ensure_inbox" | "undo" | "undo_stage" | "next" | "previous" | "note" | "set_stages";
+  /** 阶段大事记：随 next/previous 附带，或配合 action="note" 补录。 */
+  note?: string;
+  /** action="set_stages" 时的自定义阶段标签列表。 */
+  stages?: string[];
 };
 
 function validStageIndex(value: unknown): value is number {
@@ -57,31 +61,101 @@ export async function PATCH(req: Request) {
     }
     const undo = body.action === "undo" || body.action === "undo_stage";
     const move = body.action === "next" || body.action === "previous";
-    if (body.stage !== undefined || (body.stageIndex === undefined && !undo && !move)) {
+    const setNote = body.action === "note";
+    const setStages = body.action === "set_stages";
+    if (body.stage !== undefined || (body.stageIndex === undefined && !undo && !move && !setNote && !setStages)) {
       return NextResponse.json({ error: "stageIndex required" }, { status: 400 });
     }
-    if (body.action !== undefined && !undo && !move) {
+    if (body.action !== undefined && !undo && !move && !setNote && !setStages) {
       return NextResponse.json({ error: "invalid action" }, { status: 400 });
     }
     if (body.stageIndex !== undefined && !validStageIndex(body.stageIndex)) {
       return NextResponse.json({ error: "invalid stageIndex" }, { status: 400 });
     }
 
+    const stages = resolveCaseStages(current);
     const history = [...(current.stageHistory ?? [])];
+
+    // 自定义阶段：整组替换（1–20 个非空标签，去重）
+    if (setStages) {
+      const raw = Array.isArray(body.stages) ? body.stages : null;
+      if (
+        !raw ||
+        raw.length < 1 ||
+        raw.length > 20 ||
+        raw.some((s) => typeof s !== "string" || s.trim().length === 0)
+      ) {
+        return NextResponse.json({ error: "invalid stages" }, { status: 400 });
+      }
+      const seen = new Set<string>();
+      const labels: string[] = [];
+      for (const label of raw) {
+        const trimmed = label.trim();
+        if (!seen.has(trimmed)) {
+          seen.add(trimmed);
+          labels.push(trimmed);
+        }
+      }
+      const stageIndex = normalizeStageIndex(current.stageIndex ?? 0, labels.length);
+      const next: Case = {
+        ...current,
+        customStages: labels,
+        stage: labels[stageIndex],
+        stageIndex,
+      };
+      store.cases[index] = next;
+      writeStore(body.cwd, store);
+      return NextResponse.json({ success: true, case: next });
+    }
+
+    // 阶段补记：给某阶段的历史条目写/改大事记（无该条目时按需创建）
+    if (setNote) {
+      if (!validStageIndex(body.stageIndex) || typeof body.note !== "string") {
+        return NextResponse.json({ error: "stageIndex and note required" }, { status: 400 });
+      }
+      const note = body.note.trim();
+      const noteIndex = history.findIndex((entry) => entry.stageIndex === body.stageIndex);
+      if (noteIndex >= 0) {
+        history[noteIndex] = { ...history[noteIndex], note: note || undefined };
+      } else if (note) {
+        history.push({
+          stageIndex: body.stageIndex,
+          stage: stages[body.stageIndex] ?? current.stage,
+          changedAt: new Date().toISOString(),
+          note,
+        });
+      }
+      const next: Case = { ...current, stageHistory: history };
+      store.cases[index] = next;
+      writeStore(body.cwd, store);
+      return NextResponse.json({ success: true, case: next });
+    }
+
     if (undo) history.pop();
-    const currentIndex = normalizeLitigationStageIndex(current.stageIndex ?? litigationStageIndexFor(current.stage));
+    const currentIndex = normalizeStageIndex(
+      current.stageIndex ?? litigationStageIndexFor(current.stage) ?? 0,
+      stages.length,
+    );
     const targetIndex = undo
       ? history.at(-1)?.stageIndex
       : body.action === "next"
         ? currentIndex + 1
         : body.action === "previous"
           ? currentIndex - 1
-          : normalizeLitigationStageIndex(body.stageIndex);
+          : normalizeStageIndex(body.stageIndex, stages.length);
     if (targetIndex === undefined) return NextResponse.json({ error: "no stage update to undo" }, { status: 409 });
-    const stageIndex = normalizeLitigationStageIndex(targetIndex);
-    const stage = DEFAULT_LITIGATION_STAGES[stageIndex];
-    if (!undo && history.at(-1)?.stageIndex !== stageIndex) {
-      history.push({ stageIndex, stage, changedAt: new Date().toISOString() });
+    const stageIndex = normalizeStageIndex(targetIndex, stages.length);
+    const stage = stages[stageIndex];
+    if (!undo) {
+      // 推进/回退时，可选的大事记附着到「刚结束」的阶段（history 末条）
+      const note = typeof body.note === "string" && body.note.trim() ? body.note.trim() : undefined;
+      if (note && history.length > 0) {
+        const last = history.length - 1;
+        history[last] = { ...history[last], note };
+      }
+      if (history.at(-1)?.stageIndex !== stageIndex) {
+        history.push({ stageIndex, stage, changedAt: new Date().toISOString() });
+      }
     }
 
     const next: Case = { ...current, stage, stageIndex, stageHistory: history };
@@ -132,17 +206,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "invalid stageIndex" }, { status: 400 });
     }
     const now = new Date().toISOString();
+    const customStages = type === "litigation" && Array.isArray(body.customStages) && body.customStages.length > 0
+      ? body.customStages.map((s) => s.trim()).filter((s) => s.length > 0)
+      : undefined;
+    const stageList = customStages ?? DEFAULT_LITIGATION_STAGES;
     const stageIndex = type === "litigation"
-      ? normalizeLitigationStageIndex(body.stageIndex ?? litigationStageIndexFor(body.stage))
+      ? normalizeStageIndex(body.stageIndex ?? litigationStageIndexFor(body.stage), stageList.length)
       : undefined;
     const newCase: Case = {
       id: crypto.randomUUID(),
       title,
       type,
-      stage: type === "litigation" ? DEFAULT_LITIGATION_STAGES[stageIndex!] : body.stage || "收案",
+      stage: type === "litigation" ? stageList[stageIndex!] : body.stage || "收案",
       stageIndex,
+      customStages,
       stageHistory: type === "litigation"
-        ? [{ stageIndex: stageIndex!, stage: DEFAULT_LITIGATION_STAGES[stageIndex!], changedAt: now }]
+        ? [{ stageIndex: stageIndex!, stage: stageList[stageIndex!], changedAt: now }]
         : undefined,
       status: "active",
       vaultPath: caseDir,

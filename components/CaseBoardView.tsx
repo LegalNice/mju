@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import type { Case, Deadline, Deliverable, DeliverableStatus, Schedule, Task, TaskPriority, TaskStatus } from "@/lib/mju-models";
+import { normalizeStageIndex, resolveCaseStages } from "@/lib/mju-models";
 import type { WorkflowDefinition } from "@/lib/workflows";
 import { aggregateDateRisks, formatDateRisk } from "@/lib/date-risk";
 import {
@@ -303,8 +304,17 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
   const [workflows, setWorkflows] = useState<WorkflowSummary[] | null>(null);
   const [deliverables, setDeliverables] = useState<Deliverable[] | null>(null);
   const [dashboardView, setDashboardView] = useState<DashboardView>("tasks");
-  const [stagePending, setStagePending] = useState<"next" | "previous" | "undo" | null>(null);
+  const [stagePending, setStagePending] = useState<"next" | "previous" | "undo" | "note" | null>(null);
   const [stageError, setStageError] = useState<string | null>(null);
+  // 阶段弹窗：推进/回退/撤销共用（next/previous 带大事记输入），note 为补记已有阶段
+  const [stageModal, setStageModal] = useState<
+    { kind: "next" | "previous" | "undo" } | { kind: "note"; stageIndex: number } | null
+  >(null);
+  const [stageNoteInput, setStageNoteInput] = useState("");
+  // 自定义阶段编辑
+  const [editingStages, setEditingStages] = useState(false);
+  const [stageDraft, setStageDraft] = useState<string[]>([]);
+  const [newStageName, setNewStageName] = useState("");
   const [deliverableError, setDeliverableError] = useState<string | null>(null);
   const [advancingId, setAdvancingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -526,7 +536,7 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
         date: entry.changedAt,
         title: entry.stage,
         kind: "stage",
-        detail: "案件阶段更新",
+        detail: entry.note ?? "案件阶段更新",
       });
     }
     return events;
@@ -535,8 +545,14 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
   const inProgressCount = caseTasks.filter((task) => task.status === "进行中").length;
   const upcomingCount = caseRiskItems.length;
   const openDeliverableCount = (deliverables ?? []).filter((item) => item.status !== "archived").length;
-  const currentStageIndex = currentCase?.type === "litigation" ? currentCase.stageIndex ?? 0 : 0;
-  const canMoveStageForward = currentCase?.type === "litigation" && currentStageIndex < 7;
+  const stageLabels = useMemo(
+    () => (currentCase?.type === "litigation" ? resolveCaseStages(currentCase) : []),
+    [currentCase],
+  );
+  const currentStageIndex = currentCase?.type === "litigation"
+    ? normalizeStageIndex(currentCase.stageIndex ?? 0, stageLabels.length)
+    : 0;
+  const canMoveStageForward = currentCase?.type === "litigation" && currentStageIndex < stageLabels.length - 1;
   const canMoveStageBackward = currentCase?.type === "litigation" && currentStageIndex > 0;
 
   // 「改派到」候选：排除当前案件；收件箱恒置底不受搜索过滤
@@ -699,27 +715,89 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
     [cwd, loadTasks],
   );
 
-  const updateCaseStage = useCallback(async (action: "next" | "previous" | "undo") => {
+  const applyCaseStage = useCallback(
+    async (action: "next" | "previous" | "undo" | "note", note: string, stageIndex?: number) => {
+      if (!currentCase || stagePending) return;
+      setStagePending(action);
+      setStageError(null);
+      try {
+        const res = await fetch("/api/cases", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(action === "note"
+            ? { cwd, id: currentCase.id, action, stageIndex, note }
+            : { cwd, id: currentCase.id, action, note }),
+        });
+        const data = (await res.json().catch(() => ({}))) as { case?: Case; error?: string };
+        if (!res.ok || !data.case) throw new Error(data.error ?? `patch case ${res.status}`);
+        setCases((items) => (items ?? []).map((item) => (item.id === data.case?.id ? data.case : item)));
+        setStageModal(null);
+        setStageNoteInput("");
+      } catch (err) {
+        setStageError(err instanceof Error ? err.message : "阶段更新失败，请重试");
+      } finally {
+        setStagePending(null);
+      }
+    },
+    [cwd, currentCase, stagePending],
+  );
+
+  // 阶段弹窗：推进/回退/撤销打开确认（带可选大事记）；点击阶段点为补记模式
+  const openStageAction = useCallback((kind: "next" | "previous" | "undo") => {
+    setStageError(null);
+    setStageNoteInput("");
+    setStageModal({ kind });
+  }, []);
+
+  const openStageNote = useCallback((stageIndex: number) => {
+    const entry = currentCase?.stageHistory?.find((e) => e.stageIndex === stageIndex);
+    setStageError(null);
+    setStageNoteInput(entry?.note ?? "");
+    setStageModal({ kind: "note", stageIndex });
+  }, [currentCase]);
+
+  const submitStageModal = useCallback(async () => {
+    if (!stageModal) return;
+    if (stageModal.kind === "note") {
+      await applyCaseStage("note", stageNoteInput, stageModal.stageIndex);
+    } else {
+      await applyCaseStage(stageModal.kind, stageNoteInput);
+    }
+  }, [stageModal, stageNoteInput, applyCaseStage]);
+
+  // 自定义阶段编辑：从当前案例阶段初始化草稿，保存时整组替换
+  const openStageEditor = useCallback(() => {
+    if (!currentCase) return;
+    setStageDraft([...resolveCaseStages(currentCase)]);
+    setEditingStages(true);
+    setStageError(null);
+  }, [currentCase]);
+
+  const saveStages = useCallback(async () => {
     if (!currentCase || stagePending) return;
-    const actionLabel = action === "next" ? "推进" : action === "previous" ? "回退" : "撤销上次变更";
-    if (!window.confirm(`确认${actionLabel}案件阶段？`)) return;
-    setStagePending(action);
+    const labels = stageDraft.map((s) => s.trim()).filter((s) => s.length > 0);
+    if (labels.length < 1) {
+      setStageError("至少保留一个阶段");
+      return;
+    }
+    setStagePending("note");
     setStageError(null);
     try {
       const res = await fetch("/api/cases", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cwd, id: currentCase.id, action }),
+        body: JSON.stringify({ cwd, id: currentCase.id, action: "set_stages", stages: labels }),
       });
       const data = (await res.json().catch(() => ({}))) as { case?: Case; error?: string };
       if (!res.ok || !data.case) throw new Error(data.error ?? `patch case ${res.status}`);
       setCases((items) => (items ?? []).map((item) => (item.id === data.case?.id ? data.case : item)));
+      setEditingStages(false);
     } catch (err) {
-      setStageError(err instanceof Error ? err.message : "阶段更新失败，请重试");
+      setStageError(err instanceof Error ? err.message : "阶段保存失败，请重试");
     } finally {
       setStagePending(null);
     }
-  }, [cwd, currentCase, stagePending]);
+  }, [cwd, currentCase, stagePending, stageDraft]);
 
   // 中断执行：POST abort 后关菜单，运行脉冲随 SSE 推送自动消失
   const abortTask = useCallback(async (task: Task) => {
@@ -1076,16 +1154,65 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
         <CaseStageProgress
           caseItem={currentCase}
           stages={currentCase.type === "litigation"
-            ? ["接案", "立案", "举证", "庭前会议", "开庭", "等待判决", "执行", "结案"].map((label) => ({ id: label, label }))
+            ? stageLabels.map((label) => ({ id: label, label }))
             : [{ id: currentCase.stage, label: currentCase.stage }]}
+          onEditNote={currentCase.type === "litigation" ? openStageNote : undefined}
         />
-        {currentCase.type === "litigation" && (
+        {currentCase.type === "litigation" && !editingStages && (
           <div className="case-stage-actions">
-            <TinyButton onClick={() => void updateCaseStage("previous")} disabled={!canMoveStageBackward || Boolean(stagePending)}>回退阶段</TinyButton>
-            <TinyButton accent onClick={() => void updateCaseStage("next")} disabled={!canMoveStageForward || Boolean(stagePending)}>推进阶段</TinyButton>
-            <TinyButton onClick={() => void updateCaseStage("undo")} disabled={Boolean(stagePending)}>撤销上次变更</TinyButton>
+            <TinyButton onClick={() => openStageAction("previous")} disabled={!canMoveStageBackward || Boolean(stagePending)}>回退阶段</TinyButton>
+            <TinyButton accent onClick={() => openStageAction("next")} disabled={!canMoveStageForward || Boolean(stagePending)}>推进阶段</TinyButton>
+            <TinyButton onClick={() => openStageAction("undo")} disabled={Boolean(stagePending)}>撤销上次变更</TinyButton>
+            <TinyButton onClick={openStageEditor} disabled={Boolean(stagePending)}>编辑阶段</TinyButton>
             {stagePending && <span className="case-stage-feedback">更新中…</span>}
             {stageError && <span role="alert" className="case-stage-feedback is-error">{stageError}</span>}
+          </div>
+        )}
+        {currentCase.type === "litigation" && editingStages && (
+          <div className="case-stage-editor">
+            {stageDraft.map((label, index) => (
+              <div key={index} className="case-stage-editor-row">
+                <input
+                  value={label}
+                  placeholder={`阶段 ${index + 1}`}
+                  onChange={(e) => setStageDraft((d) => d.map((s, i) => (i === index ? e.target.value : s)))}
+                />
+                <TinyButton
+                  onClick={() => setStageDraft((d) => d.filter((_, i) => i !== index))}
+                  disabled={stageDraft.length <= 1}
+                >
+                  删除
+                </TinyButton>
+              </div>
+            ))}
+            <div className="case-stage-editor-row">
+              <input
+                value={newStageName}
+                placeholder="新阶段名称"
+                onChange={(e) => setNewStageName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newStageName.trim()) {
+                    setStageDraft((d) => [...d, newStageName.trim()]);
+                    setNewStageName("");
+                  }
+                }}
+              />
+              <TinyButton
+                onClick={() => {
+                  if (newStageName.trim()) {
+                    setStageDraft((d) => [...d, newStageName.trim()]);
+                    setNewStageName("");
+                  }
+                }}
+              >
+                添加
+              </TinyButton>
+            </div>
+            <div className="case-stage-editor-actions">
+              <TinyButton accent onClick={() => void saveStages()} disabled={Boolean(stagePending)}>保存</TinyButton>
+              <TinyButton onClick={() => setEditingStages(false)}>取消</TinyButton>
+              {stageError && <span role="alert" className="case-stage-feedback is-error">{stageError}</span>}
+            </div>
           </div>
         )}
       </section>
@@ -1519,6 +1646,91 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
                 onClick={startWorkflowRun}
               >
                 {starting ? "启动中…" : "确认启动"}
+              </ModalButton>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {stageModal && currentCase && (
+        <div
+          onClick={() => !stagePending && setStageModal(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,.32)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 60,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(440px, calc(100vw - 40px))",
+              background: "var(--bg)",
+              border: "1px solid var(--border)",
+              borderRadius: 4,
+              boxShadow: "var(--overlay-shadow, 0 18px 48px rgba(0,0,0,.22))",
+              padding: 18,
+            }}
+          >
+            <div style={{ ...MICRO, letterSpacing: "0.06em", marginBottom: 10 }}>
+              {stageModal.kind === "note" ? tr("补记大事记", "Stage note") : tr("案件阶段", "Case stage")}
+            </div>
+            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 12 }}>
+              {stageModal.kind === "next"
+                ? tr(`推进到「${stageLabels[currentStageIndex + 1] ?? ""}」？`, "Advance to the next stage?")
+                : stageModal.kind === "previous"
+                  ? tr(`回退到「${stageLabels[currentStageIndex - 1] ?? ""}」？`, "Move back a stage?")
+                  : stageModal.kind === "undo"
+                    ? tr("撤销上次阶段变更？", "Undo the last stage change?")
+                    : tr(
+                        `记录「${stageLabels[stageModal.kind === "note" ? stageModal.stageIndex : 0] ?? ""}」的大事记`,
+                        `Note for this stage`,
+                      )}
+            </div>
+            {stageModal.kind !== "undo" && (
+              <textarea
+                value={stageNoteInput}
+                onChange={(e) => setStageNoteInput(e.target.value)}
+                placeholder={tr(
+                  "本阶段大事记（可留空）：如已提交证据清单、开庭时间确定…",
+                  "What happened in this stage (optional)…",
+                )}
+                rows={3}
+                autoFocus
+                style={{
+                  width: "100%",
+                  boxSizing: "border-box",
+                  border: "1px solid var(--border)",
+                  borderRadius: 2,
+                  padding: "8px 10px",
+                  fontSize: 13,
+                  lineHeight: 1.5,
+                  background: "var(--bg)",
+                  color: "var(--text)",
+                  outline: "none",
+                  resize: "vertical",
+                  marginBottom: 12,
+                  fontFamily: "inherit",
+                }}
+              />
+            )}
+            {stageError && (
+              <div style={{ fontSize: 12, color: "var(--accent)", marginBottom: 10 }}>{stageError}</div>
+            )}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <ModalButton variant="outline" onClick={() => setStageModal(null)} disabled={Boolean(stagePending)}>
+                {tr("取消", "Cancel")}
+              </ModalButton>
+              <ModalButton variant="accent" onClick={() => void submitStageModal()} disabled={Boolean(stagePending)}>
+                {stagePending
+                  ? tr("更新中…", "Saving…")
+                  : stageModal.kind === "note"
+                    ? tr("保存", "Save")
+                    : tr("确认", "Confirm")}
               </ModalButton>
             </div>
           </div>

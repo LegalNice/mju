@@ -27,6 +27,8 @@ export interface CaseStageProgressProps {
   stages: readonly CaseStageDefinition[];
   title?: string;
   emptyLabel?: string;
+  /** 传入后阶段点可点击：点击已走过的阶段补记/编辑大事记。 */
+  onEditNote?: (stageIndex: number) => void;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -55,11 +57,12 @@ export function CaseStageProgress({
   stages,
   title = "案件阶段",
   emptyLabel = "尚未配置阶段",
+  onEditNote,
 }: CaseStageProgressProps) {
   if (stages.length === 0) return <SectionLabel title={title} trailing={emptyLabel} />;
 
   const currentIndex = resolveStageIndex(caseItem, stages);
-  const historyByStage = new Map((caseItem.stageHistory ?? []).map((entry) => [entry.stage, entry]));
+  const historyByStage = new Map((caseItem.stageHistory ?? []).map((entry) => [entry.stageIndex, entry]));
 
   return (
     <section className="case-stage-route" aria-label={title}>
@@ -73,18 +76,33 @@ export function CaseStageProgress({
         {stages.map((stage, index) => {
           const isCurrent = index === currentIndex;
           const isComplete = index < currentIndex;
-          const entry: CaseStageHistoryEntry | undefined = historyByStage.get(stage.id);
+          const entry: CaseStageHistoryEntry | undefined = historyByStage.get(index);
           const date = formatShortDate(entry?.changedAt);
-          return (
-            <li
-              key={stage.id}
-              className={`case-stage-route-step${isCurrent ? " is-current" : ""}${isComplete ? " is-complete" : ""}`}
-            >
+          const editable = Boolean(onEditNote) && (isComplete || isCurrent) && entry;
+          const step = (
+            <>
               <span className="case-stage-route-dot" aria-current={isCurrent ? "step" : undefined} />
-              <span className="case-stage-route-name" title={stage.label}>{stage.label}</span>
+              <span className="case-stage-route-name" title={stage.label}>
+                {stage.label}
+                {entry?.note ? <span className="case-stage-route-note-dot" title={entry.note} aria-label="已记录大事记" /> : null}
+              </span>
               {(date || stage.description) && (
                 <span className="case-stage-route-date">{date ?? stage.description}</span>
               )}
+            </>
+          );
+          return (
+            <li
+              key={stage.id}
+              className={`case-stage-route-step${isCurrent ? " is-current" : ""}${isComplete ? " is-complete" : ""}${editable ? " is-editable" : ""}`}
+            >
+              {editable
+                ? (
+                  <button type="button" className="case-stage-route-button" onClick={() => onEditNote!(index)}>
+                    {step}
+                  </button>
+                )
+                : step}
             </li>
           );
         })}

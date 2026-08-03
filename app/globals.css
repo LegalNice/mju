@@ -1067,6 +1067,53 @@ span.linenumber {
 .case-board .case-stage-feedback { color: var(--text-dim); font: 10px/1.35 var(--font-mono); }
 .case-board .case-stage-feedback.is-error { color: var(--accent); }
 
+/* 阶段点可点击补记：按钮化但不破坏流程线结构 */
+.case-board .case-stage-route-step.is-editable .case-stage-route-button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.case-board .case-stage-route-step.is-editable .case-stage-route-button:hover .case-stage-route-name {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.case-board .case-stage-route-name .case-stage-route-note-dot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 5px;
+  vertical-align: 1px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* 自定义阶段编辑器 */
+.case-board .case-stage-editor { margin-top: -14px; display: grid; gap: 7px; }
+.case-board .case-stage-editor-row { display: flex; align-items: center; gap: 8px; }
+.case-board .case-stage-editor-row input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+  padding: 4px 8px;
+  outline: none;
+}
+.case-board .case-stage-editor-row input:focus { border-color: var(--accent); }
+.case-board .case-stage-editor-actions { display: flex; align-items: center; gap: 7px; margin-top: 4px; }
+
 .case-board .case-urgency-strip {
   display: flex;
   align-items: baseline;

@@ -53,12 +53,27 @@ export interface CaseStageHistoryEntry {
   stageIndex: number;
   stage: string;
   changedAt: string;
+  /** 阶段大事记：推进时补记或事后点击阶段点补录。 */
+  note?: string;
 }
 
 /** Clamp persisted or user-supplied litigation progress to the default lifecycle. */
 export function normalizeLitigationStageIndex(value: unknown): number {
   const index = typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : 0;
   return Math.min(Math.max(index, 0), DEFAULT_LITIGATION_STAGES.length - 1);
+}
+
+/** Clamp a stage index to an arbitrary stage list length (custom stages included). */
+export function normalizeStageIndex(value: unknown, length: number): number {
+  const index = typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : 0;
+  if (length <= 0) return 0;
+  return Math.min(Math.max(index, 0), length - 1);
+}
+
+/** Resolve the ordered stage labels for a case: custom stages override the default lifecycle. */
+export function resolveCaseStages(caseItem: Pick<Case, "type" | "customStages">): readonly string[] {
+  if (caseItem.customStages && caseItem.customStages.length > 0) return caseItem.customStages;
+  return DEFAULT_LITIGATION_STAGES;
 }
 
 export interface Case {
@@ -76,6 +91,8 @@ export interface Case {
   stage: string;
   /** Current position in DEFAULT_LITIGATION_STAGES; only meaningful for litigation cases. */
   stageIndex?: number;
+  /** 自定义阶段（覆盖默认八阶段）；未设置时用 DEFAULT_LITIGATION_STAGES。 */
+  customStages?: string[];
   /** Audit trail of current-stage changes, oldest first. */
   stageHistory?: CaseStageHistoryEntry[];
   status: CaseStatus;
