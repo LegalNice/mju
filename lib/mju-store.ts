@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { createEmptyStore, DEFAULT_LITIGATION_STAGES, litigationStageIndexFor, normalizeLitigationStageIndex, touchStore, type Case, type CaseType, type MjuStore } from "./mju-models";
+import { createEmptyStore, litigationStageIndexFor, normalizeStageIndex, resolveCaseStages, touchStore, type Case, type CaseType, type MjuStore } from "./mju-models";
 import { ensureCaseSkeleton } from "./mju-guidance";
 import { mjuProjectDir, mjuRootDir } from "./mju-paths";
 
@@ -128,9 +128,11 @@ export function isMjuStore(value: unknown): value is MjuStore {
 function normalizeLitigationCase(caseItem: Case): Case {
   if (caseItem.type !== "litigation") return caseItem;
 
+  // 尊重自定义阶段：有 customStages 时按它归一化，否则回退默认八阶段
+  const stageList = resolveCaseStages(caseItem);
   const legacyStageIndex = litigationStageIndexFor(caseItem.stage);
-  const stageIndex = normalizeLitigationStageIndex(caseItem.stageIndex ?? legacyStageIndex);
-  const stage = DEFAULT_LITIGATION_STAGES[stageIndex];
+  const stageIndex = normalizeStageIndex(caseItem.stageIndex ?? legacyStageIndex, stageList.length);
+  const stage = stageList[stageIndex];
   const history = Array.isArray(caseItem.stageHistory)
     ? caseItem.stageHistory
       .filter((entry): entry is NonNullable<Case["stageHistory"]>[number] => (
@@ -140,17 +142,18 @@ function normalizeLitigationCase(caseItem: Case): Case {
         && typeof entry.changedAt === "string"
       ))
       .map((entry) => {
-        const stageIndex = normalizeLitigationStageIndex(
+        const stageIndex = normalizeStageIndex(
           typeof entry.stageIndex === "number" && Number.isFinite(entry.stageIndex)
             ? entry.stageIndex
             : litigationStageIndexFor(entry.stage),
+          stageList.length,
         );
-        return { stageIndex, stage: DEFAULT_LITIGATION_STAGES[stageIndex], changedAt: entry.changedAt };
+        return { stageIndex, stage: stageList[stageIndex], changedAt: entry.changedAt, note: entry.note };
       })
     : [];
   const last = history.at(-1);
   if (!last || last.stageIndex !== stageIndex) {
-    history.push({ stageIndex, stage, changedAt: caseItem.createdAt });
+    history.push({ stageIndex, stage, changedAt: caseItem.createdAt, note: undefined });
   }
 
   return { ...caseItem, stage, stageIndex, stageHistory: history };
