@@ -9,7 +9,7 @@ import type { ExtensionUiRequest, ExtensionUiResponse, ExtensionWidgetItem } fro
 import { createSubagentConfigTool } from "./subagent-config-tool";
 import { getPiSubagentsPaths } from "./pi-runtime-paths";
 import { mjuProjectAgentsDir } from "./mju-paths";
-import { MJU_ORCHESTRATION_PROMPT } from "./mju-orchestration";
+import { MJU_ORCHESTRATION_PROMPT, MJU_CALC_GUIDE } from "./mju-orchestration";
 import { delimiter as pathDelimiter, join as joinPath } from "node:path";
 import { cpSync, existsSync, readdirSync } from "node:fs";
 
@@ -1068,8 +1068,12 @@ export async function startRpcSession(
       : undefined;
     const resourceLoaderOptions = {
       ...(subagentResources ?? {}),
-      // Only teach delegation when the subagent tool can actually be loaded.
-      ...(subagentPaths ? { appendSystemPrompt: [MJU_ORCHESTRATION_PROMPT] } : {}),
+      // The calc guide applies to every session (金额算错即事故)；delegation
+      // guidance only makes sense when the subagent tool can actually load.
+      appendSystemPrompt: [
+        MJU_CALC_GUIDE,
+        ...(subagentPaths ? [MJU_ORCHESTRATION_PROMPT] : []),
+      ],
     };
     const services = await createAgentSessionServices({ cwd, agentDir, resourceLoaderOptions });
     let reloadAfterSubagentSave: () => Promise<void> = async () => {};

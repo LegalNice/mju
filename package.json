@@ -27,7 +27,7 @@
     "dev:webpack": "next dev --webpack -p 30143",
     "build": "next build --webpack",
     "start": "next start -p 26313",
-    "test:backend": "node --test lib/mju-store.test.mjs lib/material-intelligence.test.mjs lib/mju-update.test.mjs app/api/legal-routes.test.mjs \"app/api/cases/*/materials/route.test.mjs\" \"app/api/cases/*/materials/analyze/route.test.mjs\" \"app/api/cases/*/materials/convert/route.test.mjs\"",
+    "test:backend": "node --test lib/mju-store.test.mjs lib/material-intelligence.test.mjs lib/mju-update.test.mjs lib/legal-calculators.test.mjs lib/date-utils.test.mjs app/api/legal-routes.test.mjs \"app/api/cases/*/materials/route.test.mjs\" \"app/api/cases/*/materials/analyze/route.test.mjs\" \"app/api/cases/*/materials/convert/route.test.mjs\"",
     "lint": "eslint .",
     "release": "npm version patch --no-git-tag-version && npm run build && npm publish --access public",
     "typecheck": "tsc --noEmit",
