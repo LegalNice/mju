@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from "re
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Case as MjuCase, CaseType, Deadline, Schedule, Task } from "@/lib/mju-models";
+import { aggregateDateRisks, formatDateRisk, type DateRiskItem } from "@/lib/date-risk";
 import type { VaultItem } from "@/lib/mju-vault-items";
 import { ModelsConfig } from "@/components/ModelsConfig";
 import { SkillsConfig } from "@/components/SkillsConfig";
@@ -70,6 +71,7 @@ interface AgendaItem {
   caseId: string;
   caseTitle: string;
   taskId?: string;
+  sessionId?: string;
   overdue: boolean;
   /** 已在办但尚未设置日期的任务，不能因此从首页消失。 */
   undated?: boolean;
@@ -113,7 +115,7 @@ function buildAgenda(
     const date = t.deadline.slice(0, 10);
     items.push({
       date, title: t.title, kind: "task",
-      caseId: t.caseId, caseTitle: titleOf(t.caseId), taskId: t.id,
+      caseId: t.caseId, caseTitle: titleOf(t.caseId), taskId: t.id, sessionId: t.sessionId,
       overdue: date < today,
     });
   }
@@ -159,6 +161,7 @@ function buildAgenda(
       caseId: t.caseId,
       caseTitle: titleOf(t.caseId),
       taskId: t.id,
+      sessionId: t.sessionId,
       overdue: false,
       undated: true,
     });
@@ -471,6 +474,8 @@ export function EntryPage() {
   const [selectedModel, setSelectedModel] = useState<ModelSelection | null>(null);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [agenda, setAgenda] = useState<AgendaItem[]>([]);
+  const [riskItems, setRiskItems] = useState<DateRiskItem[]>([]);
+  const [runningSessionIds, setRunningSessionIds] = useState<Set<string>>(new Set());
   const [spotOn, setSpotOn] = useState(false);
   const [initOpen, setInitOpen] = useState(false);
   const [projMenuOpen, setProjMenuOpen] = useState(false);
@@ -611,17 +616,32 @@ export function EntryPage() {
         setCases(caseList);
         const titles = new Map(caseList.map((c) => [c.id, c.title]));
         setAgenda(buildAgenda(tasks, deadlines, schedules, vaultItems, titles));
+        setRiskItems(aggregateDateRisks({ tasks, deadlines, schedules }, { upcomingDays: 7 }).filter((item) => item.level !== "normal"));
       })
       .catch(() => {
         if (cancelled) return;
         setCases([]);
         setAgenda([]);
+        setRiskItems([]);
       });
     loadModels();
     return () => {
       cancelled = true;
     };
   }, [project, loadModels]);
+
+  useEffect(() => {
+    const source = new EventSource("/api/agent/running/events");
+    source.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data as string) as { type?: string; runningSessionIds?: string[] };
+        if (data.type === "running") setRunningSessionIds(new Set(data.runningSessionIds ?? []));
+      } catch {
+        // Ignore malformed event frames.
+      }
+    };
+    return () => source.close();
+  }, []);
 
   // Close the case dropdown on outside click.
   useEffect(() => {
@@ -832,6 +852,8 @@ export function EntryPage() {
   /** Deadline to show on the chip — only when the visible hit came from the AI fallback */
   const chipAiDeadline = !pinned && !detected && aiDetected ? aiDeadline : null;
   const todayStr = localDateString(new Date());
+  const riskPreview = riskItems.slice(0, 3);
+  const runningTaskCount = agenda.filter((item) => item.kind === "task" && item.sessionId && runningSessionIds.has(item.sessionId)).length;
 
   const configButtons: { id: ConfigPanel; label: string; needsProject?: boolean }[] = [
     { id: "models", label: tr("模型", "MODELS") },
@@ -1117,6 +1139,56 @@ export function EntryPage() {
 
         {project && (
           <>
+            {(riskPreview.length > 0 || runningTaskCount > 0) && (
+              <section style={{ marginTop: 28, textAlign: "left" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "baseline",
+                    paddingBottom: 8,
+                    borderBottom: "1px solid var(--border)",
+                  }}
+                >
+                  <span style={{ ...micro, color: "var(--accent)" }}>优先处理</span>
+                  <Link href="/dates" style={{ ...micro, color: "var(--text-muted)", textDecoration: "none" }}>查看日期 →</Link>
+                </div>
+                {runningTaskCount > 0 && (
+                  <div style={{ padding: "9px 0", borderBottom: "1px solid var(--border)", fontSize: 12, color: "var(--text-muted)" }}>
+                    {runningTaskCount} 项 AI 工作正在执行
+                  </div>
+                )}
+                <div style={{ marginTop: 2 }}>
+                  {riskPreview.map((item) => {
+                    const caseTitle = cases.find((caseItem) => caseItem.id === item.caseId)?.title ?? "案件";
+                    return (
+                      <Link
+                        key={`${item.kind}:${item.id}`}
+                        href={`/board/${item.caseId}?cwd=${encodeURIComponent(project.cwd)}`}
+                        className="mju-entry-agenda"
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "80px 1fr auto",
+                          gap: 12,
+                          padding: "9px 0",
+                          borderBottom: "1px solid var(--border)",
+                          alignItems: "baseline",
+                          textDecoration: "none",
+                          color: "var(--text)",
+                        }}
+                      >
+                        <span style={{ fontSize: 11, fontWeight: 700, color: item.level === "overdue" ? "var(--accent)" : "var(--text-muted)", whiteSpace: "nowrap" }}>
+                          {formatDateRisk(item)}
+                        </span>
+                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12, fontWeight: 600 }}>{item.title}</span>
+                        <span style={{ ...micro, color: "var(--text-dim)", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{caseTitle}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
             <div
               ref={projMenuRef}
               style={{
