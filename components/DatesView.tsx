@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
-import type { Case, Deadline, Schedule, Task } from "@/lib/mju-models";
+import type { Case, Deadline, DeadlineStatus, Schedule, Task } from "@/lib/mju-models";
 import type { VaultItem } from "@/lib/mju-vault-items";
 import { AppNav } from "./AppNav";
 import { useI18n } from "./I18nProvider";
+import { getUrgency } from "@/lib/date-utils";
 
 const MICRO: CSSProperties = {
   fontSize: 10,
@@ -41,9 +42,15 @@ interface DateItem {
   caseTitle: string;
   caseType: Case["type"];
   overdue: boolean;
+  /** 到期紧迫度：overdue（已逾期）/ soon（≤7天）/ normal。用于倒计时表达。 */
+  urgency: "overdue" | "soon" | "normal";
   taskId?: string;
   vaultPath?: string;
   source: "store" | "vault";
+  /** store 期限的状态；仅 store 来源的 deadline 条目有值。 */
+  deadlineStatus?: DeadlineStatus;
+  /** store 期限的 id，确认/忽略时回传。 */
+  deadlineId?: string;
 }
 
 type ItemFilter = DateItem["kind"] | "vault" | "all";
@@ -244,9 +251,8 @@ export function DatesView() {
   const cwd = project?.cwd ?? "";
 
   // 跨案件聚合：全部按 cwd 拉取，不带 caseId 过滤
-  useEffect(() => {
+  const reload = () => {
     if (!cwd) return;
-    setError(null);
     const q = `cwd=${encodeURIComponent(cwd)}`;
     Promise.all([
       fetch(`/api/cases?${q}`).then(async (res) => {
@@ -281,7 +287,42 @@ export function DatesView() {
         setVaultItems(v);
       })
       .catch(() => setError("load failed"));
+  };
+
+  useEffect(() => {
+    if (!cwd) return;
+    setError(null);
+    reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cwd]);
+
+  // 确认 proposed 期限 → 生效（pending）
+  const confirmDeadline = async (deadlineId: string) => {
+    try {
+      const res = await fetch("/api/deadlines", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ cwd, id: deadlineId, status: "pending" }),
+      });
+      if (!res.ok) throw new Error(`confirm ${res.status}`);
+      reload();
+    } catch {
+      setError("confirm failed");
+    }
+  };
+
+  // 忽略 proposed 期限 → 删除
+  const dismissDeadline = async (deadlineId: string) => {
+    try {
+      const res = await fetch(`/api/deadlines?id=${encodeURIComponent(deadlineId)}&cwd=${encodeURIComponent(cwd)}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error(`dismiss ${res.status}`);
+      reload();
+    } catch {
+      setError("dismiss failed");
+    }
+  };
 
   const today = todayString();
 
@@ -298,6 +339,7 @@ export function DatesView() {
       if (!t.deadline || t.status === "完成" || t.status === "取消") continue;
       const date = t.deadline.slice(0, 10);
       const info = caseInfo(t.caseId);
+      const urgency = getUrgency(date, today);
       out.push({
         id: t.id,
         date,
@@ -306,7 +348,8 @@ export function DatesView() {
         caseId: t.caseId,
         caseTitle: info.title,
         caseType: info.type,
-        overdue: date < today,
+        overdue: urgency === "overdue",
+        urgency,
         taskId: t.id,
         source: t.source ?? "store",
       });
@@ -315,6 +358,8 @@ export function DatesView() {
       if (d.status === "done") continue;
       const date = d.date.slice(0, 10);
       const info = caseInfo(d.caseId);
+      // proposed 期限尚未生效：不标红、不参与逾期计算
+      const urgency = d.status === "proposed" ? "normal" as const : getUrgency(date, today);
       out.push({
         id: d.id,
         date,
@@ -323,8 +368,11 @@ export function DatesView() {
         caseId: d.caseId,
         caseTitle: info.title,
         caseType: info.type,
-        overdue: date < today,
+        overdue: d.status === "proposed" ? false : urgency === "overdue",
+        urgency,
         source: "store",
+        deadlineStatus: d.status,
+        deadlineId: d.id,
       });
     }
     for (const s of schedules) {
@@ -332,6 +380,7 @@ export function DatesView() {
       const valid = !Number.isNaN(parsed.getTime());
       const date = valid ? dateString(parsed) : s.datetime.slice(0, 10);
       const info = caseInfo(s.caseId);
+      const urgency = getUrgency(date, today);
       out.push({
         id: s.id,
         date,
@@ -341,7 +390,8 @@ export function DatesView() {
         caseId: s.caseId,
         caseTitle: info.title,
         caseType: info.type,
-        overdue: date < today,
+        overdue: urgency === "overdue",
+        urgency,
         source: "store",
       });
     }
@@ -350,6 +400,9 @@ export function DatesView() {
       if (v.kind === "task") continue;
       const date = v.date.slice(0, 10);
       const c = v.caseId ? caseMap.get(v.caseId) : undefined;
+      // Vault 期限若状态为「待确认」，视为 proposed，不标红
+      const isProposed = v.kind === "deadline" && v.status === "待确认";
+      const urgency = isProposed ? "normal" as const : getUrgency(date, today);
       out.push({
         id: `vault:${v.filePath}`,
         date,
@@ -360,9 +413,11 @@ export function DatesView() {
         caseId: v.caseId ?? "",
         caseTitle: c?.title ?? caseNameFromPath(v.filePath),
         caseType: c?.type ?? "litigation",
-        overdue: date < today,
+        overdue: isProposed ? false : urgency === "overdue",
+        urgency,
         source: "vault",
         vaultPath: v.filePath,
+        deadlineStatus: isProposed ? "proposed" : undefined,
       });
     }
     return out;
@@ -671,10 +726,12 @@ export function DatesView() {
                   {groupItems.map((item) => {
                     const key = itemKey(item);
                     const overdueDays = item.overdue ? diffDays(today, item.date) : 0;
+                    const daysLeft = !item.overdue ? diffDays(item.date, today) : 0;
                     const isVault = item.source === "vault";
+                    const isProposed = item.deadlineStatus === "proposed";
                     const rowStyle: CSSProperties = {
                       display: "grid",
-                      gridTemplateColumns: "72px 1fr auto",
+                      gridTemplateColumns: "88px 1fr auto",
                       gap: 14,
                       padding: "11px 0",
                       borderBottom: "1px solid var(--border)",
@@ -682,41 +739,90 @@ export function DatesView() {
                       textDecoration: "none",
                       color: "var(--text)",
                     };
+                    // 到期表达：overdue/soon 用信号红，soon 显示"还剩 N 天"，8–30 天灰色倒计时
+                    const dateColor =
+                      item.overdue || item.urgency === "soon" ? "var(--accent)" : "var(--text-dim)";
+                    const dateFontWeight = item.overdue || item.urgency === "soon" ? 700 : 400;
+                    const dateLabel = item.overdue
+                      ? tr(`逾期 ${overdueDays} 天`, `${overdueDays}d overdue`)
+                      : item.urgency === "soon"
+                        ? tr(`还剩 ${daysLeft} 天`, `${daysLeft}d left`)
+                        : item.urgency === "normal" && daysLeft <= 30
+                          ? tr(`还剩 ${daysLeft} 天`, `${daysLeft}d left`)
+                          : (item.time ?? tr("全天", "All day"));
+
+                    const titleSpan = (
+                      <span
+                        style={{
+                          fontWeight: 600,
+                          fontSize: 13,
+                          color: "var(--text)",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                        }}
+                      >
+                        {isVault && <span style={VAULT_MARK}>文</span>}
+                        {isProposed && (
+                          <span style={{ ...MICRO, color: "var(--text-dim)", border: "1px solid var(--border)", borderRadius: 2, padding: "1px 5px", letterSpacing: "0.06em" }}>
+                            {tr("待确认", "Proposed")}
+                          </span>
+                        )}
+                        {item.title}
+                      </span>
+                    );
+                    const caseSpan = (
+                      <span
+                        style={{
+                          ...MICRO,
+                          letterSpacing: "0.06em",
+                          color: "var(--text-muted)",
+                          border: "1px solid var(--border)",
+                          borderRadius: 2,
+                          padding: "2px 6px",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {item.caseTitle}
+                      </span>
+                    );
+
+                    // proposed 且有 deadlineId（store 来源）：行内确认/忽略按钮，不包链接
+                    if (isProposed && item.deadlineId) {
+                      return (
+                        <div key={key} style={{ ...rowStyle, gridTemplateColumns: "88px 1fr auto auto", gap: 10 }}>
+                          <span style={{ fontSize: 11, fontVariantNumeric: "tabular-nums", color: dateColor, fontWeight: dateFontWeight }}>
+                            {dateLabel}
+                          </span>
+                          {titleSpan}
+                          {caseSpan}
+                          <span style={{ display: "flex", gap: 6 }}>
+                            <button
+                              type="button"
+                              onClick={() => confirmDeadline(item.deadlineId!)}
+                              style={{ ...MICRO, padding: "3px 8px", border: "1px solid var(--text)", borderRadius: 2, background: "var(--text)", color: "var(--bg)", cursor: "pointer" }}
+                            >
+                              {tr("确认", "Confirm")}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => dismissDeadline(item.deadlineId!)}
+                              style={{ ...MICRO, padding: "3px 8px", border: "1px solid var(--border)", borderRadius: 2, background: "transparent", color: "var(--text-muted)", cursor: "pointer" }}
+                            >
+                              {tr("忽略", "Dismiss")}
+                            </button>
+                          </span>
+                        </div>
+                      );
+                    }
+
                     const row = (
                       <>
-                        <span
-                          style={{
-                            fontSize: 11,
-                            fontVariantNumeric: "tabular-nums",
-                            color: item.overdue ? "var(--accent)" : "var(--text-dim)",
-                            fontWeight: item.overdue ? 700 : 400,
-                          }}
-                        >
-                          {item.overdue ? tr(`逾期 ${overdueDays} 天`, `${overdueDays} days overdue`) : (item.time ?? tr("全天", "All day"))}
+                        <span style={{ fontSize: 11, fontVariantNumeric: "tabular-nums", color: dateColor, fontWeight: dateFontWeight }}>
+                          {dateLabel}
                         </span>
-                        <span
-                          style={{
-                            fontWeight: 600,
-                            fontSize: 13,
-                            color: "var(--text)",
-                          }}
-                        >
-                          {isVault && <span style={VAULT_MARK}>文</span>}
-                          {item.title}
-                        </span>
-                        <span
-                          style={{
-                            ...MICRO,
-                            letterSpacing: "0.06em",
-                            color: "var(--text-muted)",
-                            border: "1px solid var(--border)",
-                            borderRadius: 2,
-                            padding: "2px 6px",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {item.caseTitle}
-                        </span>
+                        {titleSpan}
+                        {caseSpan}
                       </>
                     );
                     return (
@@ -984,7 +1090,7 @@ export function DatesView() {
               border: "1px solid var(--border)",
               borderRadius: 2,
               background: "var(--bg)",
-              boxShadow: "0 20px 60px rgba(0,0,0,0.28)",
+              boxShadow: "var(--overlay-shadow)",
             }}
           >
             <div id="date-editor-title" style={{ fontSize: 15, fontWeight: 700 }}>

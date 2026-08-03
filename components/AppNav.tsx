@@ -15,6 +15,7 @@ export function AppNav({ boardHref }: { boardHref?: string }) {
   const items = [
     { label: text("案件", "Cases"), href: boardHref ?? "/board", match: (p: string) => p.startsWith("/board") || p.startsWith("/task") },
     { label: text("日程", "Dates"), href: "/dates", match: (p: string) => p.startsWith("/dates") },
+    { label: text("工具", "Tools"), href: "/tools", match: (p: string) => p.startsWith("/tools") },
   ];
   return (
     <header

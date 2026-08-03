@@ -50,6 +50,45 @@ async function createCase(cwd, title = "测试案件") {
   return result.body.case;
 }
 
+test("creates litigation cases on the normalized default stage and tracks stage history", async (t) => {
+  const cwd = makeProject(t);
+  const created = await createCase(cwd);
+  assert.equal(created.stage, "接案");
+  assert.equal(created.stageIndex, 0);
+  assert.deepEqual(created.stageHistory.map((entry) => entry.stage), ["接案"]);
+
+  const clamped = await call(casesRoute.PATCH, "/api/cases", {
+    method: "PATCH", body: { cwd, id: created.id, stageIndex: 99 },
+  });
+  assert.equal(clamped.status, 200);
+  assert.equal(clamped.body.case.stageIndex, 7);
+  assert.equal(clamped.body.case.stage, "结案");
+
+  const next = await call(casesRoute.PATCH, "/api/cases", {
+    method: "PATCH", body: { cwd, id: created.id, action: "next" },
+  });
+  assert.equal(next.status, 200);
+  assert.equal(next.body.case.stageIndex, 7, "next clamps at the final stage");
+
+  const previous = await call(casesRoute.PATCH, "/api/cases", {
+    method: "PATCH", body: { cwd, id: created.id, action: "previous" },
+  });
+  assert.equal(previous.status, 200);
+  assert.equal(previous.body.case.stageIndex, 6);
+
+  const undo = await call(casesRoute.PATCH, "/api/cases", {
+    method: "PATCH", body: { cwd, id: created.id, action: "undo" },
+  });
+  assert.equal(undo.status, 200);
+  assert.equal(undo.body.case.stageIndex, 7);
+  assert.deepEqual(undo.body.case.stageHistory.map((entry) => entry.stage), ["接案", "结案"]);
+
+  const invalid = await call(casesRoute.PATCH, "/api/cases", {
+    method: "PATCH", body: { cwd, id: created.id, stageIndex: "2" },
+  });
+  assert.equal(invalid.status, 400);
+});
+
 test("runs task CRUD with strict validation and persisted completion state", async (t) => {
   const cwd = makeProject(t);
   const caseItem = await createCase(cwd);
@@ -274,7 +313,7 @@ test("previews and starts a case-compatible workflow exactly once", async (t) =>
   assert.equal(refreshed.body.workflows[0].started, true);
 });
 
-test("binds a session and origin prompt to a task via POST and PATCH", async (t) => {
+test("moves pending tasks to in progress when an agent session is bound", async (t) => {
   const cwd = makeProject(t);
   const caseItem = await createCase(cwd);
 
@@ -282,11 +321,12 @@ test("binds a session and origin prompt to a task via POST and PATCH", async (t)
     method: "POST",
     body: {
       cwd, caseId: caseItem.id, title: "判例检索", assignee: "auto",
-      status: "进行中", sessionId: "sess-123", originPrompt: "帮我检索相关判例",
+      sessionId: "sess-123", originPrompt: "帮我检索相关判例",
     },
   });
   assert.equal(created.status, 200);
   assert.equal(created.body.task.sessionId, "sess-123");
+  assert.equal(created.body.task.status, "进行中");
   assert.equal(created.body.task.originPrompt, "帮我检索相关判例");
   assert.equal(readStore(cwd)?.tasks[0].sessionId, "sess-123");
 
@@ -297,6 +337,20 @@ test("binds a session and origin prompt to a task via POST and PATCH", async (t)
   assert.equal(rebound.status, 200);
   assert.equal(rebound.body.task.sessionId, "sess-456");
   assert.equal(rebound.body.task.originPrompt, "帮我检索相关判例");
+
+  const pending = await call(tasksRoute.POST, "/api/tasks", {
+    method: "POST",
+    body: { cwd, caseId: caseItem.id, title: "开具律师费发票", assignee: "auto" },
+  });
+  assert.equal(pending.body.task.status, "待办");
+
+  const started = await call(tasksRoute.PATCH, "/api/tasks", {
+    method: "PATCH",
+    body: { cwd, id: pending.body.task.id, sessionId: "sess-awaiting-client" },
+  });
+  assert.equal(started.status, 200);
+  assert.equal(started.body.task.status, "进行中");
+  assert.match(readFileSync(started.body.task.vaultPath, "utf8"), /状态: 进行中/);
 
   const invalid = await call(tasksRoute.POST, "/api/tasks", {
     method: "POST",

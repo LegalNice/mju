@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { createEmptyStore, touchStore, type Case, type CaseType, type MjuStore } from "./mju-models";
+import { createEmptyStore, DEFAULT_LITIGATION_STAGES, litigationStageIndexFor, normalizeLitigationStageIndex, touchStore, type Case, type CaseType, type MjuStore } from "./mju-models";
 import { ensureCaseSkeleton } from "./mju-guidance";
 import { mjuProjectDir, mjuRootDir } from "./mju-paths";
 
@@ -125,9 +125,41 @@ export function isMjuStore(value: unknown): value is MjuStore {
     && (store.workflowRuns === undefined || Array.isArray(store.workflowRuns));
 }
 
+function normalizeLitigationCase(caseItem: Case): Case {
+  if (caseItem.type !== "litigation") return caseItem;
+
+  const legacyStageIndex = litigationStageIndexFor(caseItem.stage);
+  const stageIndex = normalizeLitigationStageIndex(caseItem.stageIndex ?? legacyStageIndex);
+  const stage = DEFAULT_LITIGATION_STAGES[stageIndex];
+  const history = Array.isArray(caseItem.stageHistory)
+    ? caseItem.stageHistory
+      .filter((entry): entry is NonNullable<Case["stageHistory"]>[number] => (
+        Boolean(entry)
+        && typeof entry === "object"
+        && typeof entry.stage === "string"
+        && typeof entry.changedAt === "string"
+      ))
+      .map((entry) => {
+        const stageIndex = normalizeLitigationStageIndex(
+          typeof entry.stageIndex === "number" && Number.isFinite(entry.stageIndex)
+            ? entry.stageIndex
+            : litigationStageIndexFor(entry.stage),
+        );
+        return { stageIndex, stage: DEFAULT_LITIGATION_STAGES[stageIndex], changedAt: entry.changedAt };
+      })
+    : [];
+  const last = history.at(-1);
+  if (!last || last.stageIndex !== stageIndex) {
+    history.push({ stageIndex, stage, changedAt: caseItem.createdAt });
+  }
+
+  return { ...caseItem, stage, stageIndex, stageHistory: history };
+}
+
 function normalizeStore(store: MjuStore): MjuStore {
   return {
     ...store,
+    cases: store.cases.map(normalizeLitigationCase),
     workflowRuns: store.workflowRuns ?? [],
   };
 }

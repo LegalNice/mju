@@ -1,4 +1,5 @@
 import { basename } from "node:path";
+import { addDays, addYears } from "./date-utils";
 
 export type MaterialCategory =
   | "pleading"
@@ -132,18 +133,64 @@ export function classifyMaterials(filePaths: string[]): MaterialClassification[]
 }
 
 /** Infer deadlines from classifications and extracted dates.
+ *
  * Conservative: only creates a deadline when a high-confidence court/filing keyword
- * is paired with an extracted date.
+ * is paired with an extracted date. Beyond a plain date extraction, recognized
+ * document kinds trigger legal-rule projection (judgment → +15d appeal window,
+ * ruling → +10d, preservation → +1y renewal), and every projected title carries
+ * its basis so the lawyer can verify the trigger date (especially the service
+ * date, which the file-name date is only a proxy for).
  */
 export function inferDeadlines(classifications: MaterialClassification[]): InferredDeadline[] {
   const deadlines: InferredDeadline[] = [];
   for (const item of classifications) {
+    if (item.confidence !== "high" || item.extractedDates.length === 0) continue;
+    // Use the latest extracted date as the most likely trigger date.
+    const triggerDate = item.extractedDates[item.extractedDates.length - 1];
+    const fileName = item.fileName.toLowerCase();
+
+    // 保全相关优先：保全裁定书应触发续封提醒，而非上诉期
+    if (item.category === "court_document" && /保全|查封|冻结/.test(fileName)) {
+      const projected = addYears(triggerDate, 1);
+      if (projected) {
+        deadlines.push({
+          title: `保全期限届满·续封提醒（按 ${triggerDate} +1年推算；不动产/股权或为3年，请核对）`,
+          date: projected,
+          type: "court",
+        });
+        continue;
+      }
+    }
+    // 判决书 → 上诉期届满（送达日 + 15 日；文书日期仅为线索，以实际送达日为准）
+    if (fileName.includes("判决书")) {
+      const projected = addDays(triggerDate, 15);
+      if (projected) {
+        deadlines.push({
+          title: `上诉期届满（按文书日期 ${triggerDate} +15日推算，以实际送达日为准）`,
+          date: projected,
+          type: "court",
+        });
+        continue;
+      }
+    }
+    // 裁定书 → 上诉期/复议期届满（+10 日）
+    if (fileName.includes("裁定书")) {
+      const projected = addDays(triggerDate, 10);
+      if (projected) {
+        deadlines.push({
+          title: `裁定上诉/复议期届满（按文书日期 ${triggerDate} +10日推算，以实际送达日为准）`,
+          date: projected,
+          type: "court",
+        });
+        continue;
+      }
+    }
+
+    // 其他法院/程序文书：保留直取兜底
     const rule = RULES.find((r) => r.category === item.category);
-    if (!rule?.deadlineType || item.extractedDates.length === 0) continue;
-    // Use the latest extracted date as the most likely deadline.
-    const date = item.extractedDates[item.extractedDates.length - 1];
+    if (!rule?.deadlineType) continue;
     const title = rule.deadlineHint ?? `处理 ${item.label}`;
-    deadlines.push({ title, date, type: rule.deadlineType });
+    deadlines.push({ title, date: triggerDate, type: rule.deadlineType });
   }
   return deadlines;
 }

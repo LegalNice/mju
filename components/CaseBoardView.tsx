@@ -4,8 +4,17 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import type { Case, Deliverable, DeliverableStatus, DeliverableType, Task, TaskPriority, TaskStatus } from "@/lib/mju-models";
+import type { Case, Deadline, Deliverable, DeliverableStatus, Schedule, Task, TaskPriority, TaskStatus } from "@/lib/mju-models";
 import type { WorkflowDefinition } from "@/lib/workflows";
+import { aggregateDateRisks, formatDateRisk } from "@/lib/date-risk";
+import {
+  CaseDocumentSummary,
+  CaseRiskSummary,
+  CaseStageProgress,
+  CaseTimeline,
+  type CaseRisk,
+  type CaseTimelineEvent,
+} from "./CaseDashboardComponents";
 import { AppNav } from "./AppNav";
 import { useI18n } from "./I18nProvider";
 
@@ -16,7 +25,7 @@ const MICRO: CSSProperties = {
   textTransform: "uppercase",
 };
 
-const COLUMNS: Array<Exclude<TaskStatus, "取消">> = ["待办", "进行中", "完成"];
+const COLUMNS: Array<Exclude<TaskStatus, "取消">> = ["待办", "进行中", "待验收", "完成"];
 
 const CASE_TYPE_LABEL: Record<Case["type"], string> = {
   litigation: "争议解决",
@@ -28,17 +37,6 @@ const PRIORITY_LABEL: Record<TaskPriority, string> = {
   high: "高",
   medium: "中",
   low: "低",
-};
-
-const DELIVERABLE_TYPE_LABEL: Record<DeliverableType, string> = {
-  "internal-opinion": "内部意见",
-  "external-opinion": "对外意见",
-  "docx-revision": "修订稿",
-  pleading: "诉讼文书",
-  "evidence-list": "证据清单",
-  "trial-outline": "庭审提纲",
-  "research-report": "检索报告",
-  other: "其他",
 };
 
 const DELIVERABLE_STATUS_LABEL: Record<DeliverableStatus, string> = {
@@ -58,20 +56,16 @@ const DELIVERABLE_STATUS_FLOW: DeliverableStatus[] = [
   "archived",
 ];
 
-function deliverableStatusColor(status: DeliverableStatus): string {
-  switch (status) {
-    case "internal-review":
-      return "var(--text-muted)";
-    case "client-review":
-      return "var(--text)";
-    case "final":
-      return "var(--accent)";
-    default: // draft / archived
-      return "var(--text-dim)";
-  }
-}
-
 type WorkflowSummary = WorkflowDefinition & { started: boolean };
+type DashboardView = "tasks" | "timeline" | "documents";
+
+interface CaseDocEntry {
+  path: string;
+  relPath: string;
+  name: string;
+  mtime: string;
+  size: number;
+}
 
 interface WorkflowPreview {
   workflow: WorkflowDefinition;
@@ -252,19 +246,22 @@ function ModalButton({
 function TinyButton({
   onClick,
   accent,
+  disabled,
   children,
 }: {
   onClick: () => void;
   accent?: boolean;
+  disabled?: boolean;
   children: React.ReactNode;
 }) {
   const [hover, setHover] = useState(false);
   return (
     <button
       type="button"
+      disabled={disabled}
       onClick={(e) => {
         e.stopPropagation();
-        onClick();
+        if (!disabled) onClick();
       }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
@@ -275,14 +272,15 @@ function TinyButton({
         borderRadius: 2,
         border: accent ? "1px solid var(--accent)" : "1px solid var(--border)",
         background: accent
-          ? hover
+          ? hover && !disabled
             ? "var(--accent-hover)"
             : "var(--accent)"
-          : hover
+          : hover && !disabled
             ? "var(--bg-hover)"
             : "transparent",
         color: accent ? "#ffffff" : "var(--text-muted)",
-        cursor: "pointer",
+        cursor: disabled ? "default" : "pointer",
+        opacity: disabled ? 0.55 : 1,
       }}
     >
       {children}
@@ -299,8 +297,14 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
 
   const [cases, setCases] = useState<Case[] | null>(null);
   const [tasks, setTasks] = useState<Task[] | null>(null);
+  const [deadlines, setDeadlines] = useState<Deadline[]>([]);
+  const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [documents, setDocuments] = useState<CaseDocEntry[]>([]);
   const [workflows, setWorkflows] = useState<WorkflowSummary[] | null>(null);
   const [deliverables, setDeliverables] = useState<Deliverable[] | null>(null);
+  const [dashboardView, setDashboardView] = useState<DashboardView>("tasks");
+  const [stagePending, setStagePending] = useState<"next" | "previous" | "undo" | null>(null);
+  const [stageError, setStageError] = useState<string | null>(null);
   const [deliverableError, setDeliverableError] = useState<string | null>(null);
   const [advancingId, setAdvancingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -316,6 +320,7 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [caseQuery, setCaseQuery] = useState("");
   const [runningSessionIds, setRunningSessionIds] = useState<Set<string>>(new Set());
+  const prevRunningRef = useRef<Set<string>>(new Set());
   const [importingMaterials, setImportingMaterials] = useState(false);
   const [uploadResult, setUploadResult] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -359,16 +364,33 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
     setDeliverables(data.deliverables);
   }, [cwd, caseId]);
 
+  const loadCaseContext = useCallback(async () => {
+    const [deadlineRes, scheduleRes, docsRes] = await Promise.all([
+      fetch(`/api/deadlines?cwd=${encodeURIComponent(cwd)}&caseId=${encodeURIComponent(caseId)}`),
+      fetch(`/api/schedules?cwd=${encodeURIComponent(cwd)}&caseId=${encodeURIComponent(caseId)}`),
+      fetch(`/api/casedocs?cwd=${encodeURIComponent(cwd)}&caseId=${encodeURIComponent(caseId)}`),
+    ]);
+    if (!deadlineRes.ok || !scheduleRes.ok || !docsRes.ok) throw new Error("case context load failed");
+    const [deadlineData, scheduleData, docsData] = await Promise.all([
+      deadlineRes.json() as Promise<{ deadlines: Deadline[] }>,
+      scheduleRes.json() as Promise<{ schedules: Schedule[] }>,
+      docsRes.json() as Promise<{ docs: CaseDocEntry[] }>,
+    ]);
+    setDeadlines(deadlineData.deadlines);
+    setSchedules(scheduleData.schedules);
+    setDocuments(docsData.docs);
+  }, [cwd, caseId]);
+
   useEffect(() => {
     if (!cwd) {
       setError("missing cwd");
       return;
     }
     setError(null);
-    Promise.all([loadCases(), loadTasks(), loadWorkflows(), loadDeliverables()]).catch(() =>
+    Promise.all([loadCases(), loadTasks(), loadWorkflows(), loadDeliverables(), loadCaseContext()]).catch(() =>
       setError("load failed"),
     );
-  }, [cwd, loadCases, loadTasks, loadWorkflows, loadDeliverables]);
+  }, [cwd, loadCases, loadTasks, loadWorkflows, loadDeliverables, loadCaseContext]);
 
   const currentCase = useMemo(
     () => cases?.find((c) => c.id === caseId) ?? null,
@@ -380,6 +402,26 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
     [tasks, caseId],
   );
 
+  useEffect(() => {
+    if (!cwd) return;
+    try {
+      const stored = localStorage.getItem(`mju-case-dashboard-view:${cwd}:${caseId}`);
+      if (stored === "tasks" || stored === "timeline" || stored === "documents") setDashboardView(stored);
+      else setDashboardView("tasks");
+    } catch {
+      setDashboardView("tasks");
+    }
+  }, [cwd, caseId]);
+
+  const selectDashboardView = useCallback((view: DashboardView) => {
+    setDashboardView(view);
+    try {
+      localStorage.setItem(`mju-case-dashboard-view:${cwd}:${caseId}`, view);
+    } catch {
+      // localStorage is an optional display preference only.
+    }
+  }, [cwd, caseId]);
+
   const taskCountByCase = useMemo(() => {
     const counts = new Map<string, number>();
     for (const task of tasks ?? []) {
@@ -388,6 +430,79 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
     }
     return counts;
   }, [tasks]);
+
+  const caseRiskItems = useMemo(() => {
+    const risks = aggregateDateRisks({ tasks: caseTasks, deadlines, schedules }, { upcomingDays: 7 });
+    return risks.filter((item) => item.level !== "normal");
+  }, [caseTasks, deadlines, schedules]);
+
+  const caseRisks = useMemo<CaseRisk[]>(() => caseRiskItems.map((item) => ({
+    id: `${item.kind}:${item.id}`,
+    title: item.title,
+    level: item.level === "overdue" ? "critical" : item.level === "due-today" || item.level === "upcoming" ? "warning" : "info",
+    detail: formatDateRisk(item),
+    dueDate: item.date,
+    source: item.kind === "task" ? "任务" : item.kind === "deadline" ? "期限" : "日程",
+  })), [caseRiskItems]);
+
+  const timelineEvents = useMemo<CaseTimelineEvent[]>(() => {
+    const events: CaseTimelineEvent[] = [];
+    for (const task of caseTasks) {
+      events.push({
+        id: `task-created:${task.id}`,
+        date: task.completedAt ?? task.createdAt,
+        title: task.title,
+        kind: "task",
+        detail: task.completedAt ? "任务完成" : task.status,
+        href: `/task/${task.id}?cwd=${encodeURIComponent(cwd)}`,
+      });
+    }
+    for (const deadline of deadlines) {
+      events.push({
+        id: `deadline:${deadline.id}`,
+        date: deadline.date,
+        title: deadline.title,
+        kind: "deadline",
+        detail: deadline.status === "done" ? "已完成" : "期限",
+        overdue: deadline.status !== "done" && deadline.date.slice(0, 10) < todayString(),
+      });
+    }
+    for (const schedule of schedules) {
+      events.push({
+        id: `schedule:${schedule.id}`,
+        date: schedule.datetime,
+        title: schedule.title,
+        kind: "note",
+        detail: schedule.type,
+      });
+    }
+    for (const deliverable of deliverables ?? []) {
+      events.push({
+        id: `deliverable:${deliverable.id}`,
+        date: deliverable.createdAt,
+        title: deliverable.title,
+        kind: "document",
+        detail: DELIVERABLE_STATUS_LABEL[deliverable.status],
+      });
+    }
+    for (const entry of currentCase?.stageHistory ?? []) {
+      events.push({
+        id: `stage:${entry.changedAt}:${entry.stageIndex}`,
+        date: entry.changedAt,
+        title: entry.stage,
+        kind: "stage",
+        detail: "案件阶段更新",
+      });
+    }
+    return events;
+  }, [caseTasks, deadlines, schedules, deliverables, currentCase, cwd]);
+
+  const inProgressCount = caseTasks.filter((task) => task.status === "进行中").length;
+  const upcomingCount = caseRiskItems.length;
+  const openDeliverableCount = (deliverables ?? []).filter((item) => item.status !== "archived").length;
+  const currentStageIndex = currentCase?.type === "litigation" ? currentCase.stageIndex ?? 0 : 0;
+  const canMoveStageForward = currentCase?.type === "litigation" && currentStageIndex < 7;
+  const canMoveStageBackward = currentCase?.type === "litigation" && currentStageIndex > 0;
 
   // 「改派到」候选：排除当前案件；收件箱恒置底不受搜索过滤
   const reassignCases = useMemo(() => {
@@ -424,6 +539,44 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
     };
     return () => source.close();
   }, []);
+
+  // Auto-transition session-bound tasks between 进行中 ↔ 待验收 based on
+  // running/idle transitions of their agent sessions.
+  const caseTasksRef = useRef(caseTasks);
+  caseTasksRef.current = caseTasks;
+  useEffect(() => {
+    const prev = prevRunningRef.current;
+    const curr = runningSessionIds;
+    prevRunningRef.current = curr;
+
+    const stopped: string[] = [];
+    const started: string[] = [];
+    for (const id of prev) { if (!curr.has(id)) stopped.push(id); }
+    for (const id of curr) { if (!prev.has(id)) started.push(id); }
+
+    if (stopped.length === 0 && started.length === 0) return;
+
+    const tasks = caseTasksRef.current;
+    for (const sessionId of stopped) {
+      const task = tasks.find((t) => t.sessionId === sessionId && t.status === "进行中");
+      if (!task) continue;
+      fetch("/api/tasks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cwd, id: task.id, status: "待验收" }),
+      }).catch(() => {});
+    }
+    for (const sessionId of started) {
+      const task = tasks.find((t) => t.sessionId === sessionId && t.status === "待验收");
+      if (!task) continue;
+      fetch("/api/tasks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cwd, id: task.id, status: "进行中" }),
+      }).catch(() => {});
+    }
+  }, [runningSessionIds, cwd]);
+  
 
   // 记住最后查看的案件，供 /board 索引页直接跳转
   useEffect(() => {
@@ -510,6 +663,28 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
     },
     [cwd, loadTasks],
   );
+
+  const updateCaseStage = useCallback(async (action: "next" | "previous" | "undo") => {
+    if (!currentCase || stagePending) return;
+    const actionLabel = action === "next" ? "推进" : action === "previous" ? "回退" : "撤销上次变更";
+    if (!window.confirm(`确认${actionLabel}案件阶段？`)) return;
+    setStagePending(action);
+    setStageError(null);
+    try {
+      const res = await fetch("/api/cases", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cwd, id: currentCase.id, action }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { case?: Case; error?: string };
+      if (!res.ok || !data.case) throw new Error(data.error ?? `patch case ${res.status}`);
+      setCases((items) => (items ?? []).map((item) => (item.id === data.case?.id ? data.case : item)));
+    } catch (err) {
+      setStageError(err instanceof Error ? err.message : "阶段更新失败，请重试");
+    } finally {
+      setStagePending(null);
+    }
+  }, [cwd, currentCase, stagePending]);
 
   // 中断执行：POST abort 后关菜单，运行脉冲随 SSE 推送自动消失
   const abortTask = useCallback(async (task: Task) => {
@@ -763,50 +938,26 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
   }
 
   return shell(
-    <main style={{ flex: 1, overflowY: "auto", padding: 28 }}>
-      {/* Masthead：案件切换 + 工作流启动器 + 类型/阶段 */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "baseline",
-          marginBottom: 22,
-        }}
-      >
-        <div ref={menuRef} style={{ position: "relative" }}>
+    <main className="case-board">
+      {/* 案件卷宗页头：保留案件切换与工作入口，改用首页同源的归档层级。 */}
+      <header className="case-dossier-header">
+        <div className="case-dossier-kicker">
+          {tr(CASE_TYPE_LABEL[currentCase.type], currentCase.type === "litigation" ? "Dispute" : currentCase.type === "advisory" ? "Advisory" : "Project")}
+          <span aria-hidden="true">/</span>
+          <span>{currentCase.stage}</span>
+        </div>
+        <div className="case-dossier-heading">
+        <div ref={menuRef} className="case-dossier-switcher">
           <button
             type="button"
+            className="case-dossier-title"
             onClick={() => setMenuOpen((open) => !open)}
-            style={{
-              display: "flex",
-              alignItems: "baseline",
-              gap: 10,
-              padding: 0,
-              border: "none",
-              background: "transparent",
-              cursor: "pointer",
-              color: "var(--text)",
-            }}
           >
-            <span style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.01em" }}>
-              {currentCase.title}
-            </span>
-            <span style={{ color: "var(--text-dim)", fontSize: 11 }}>▾</span>
+            <span>{currentCase.title}</span>
+            <span className="case-dossier-title-caret">▾</span>
           </button>
           {menuOpen && (
-            <div
-              style={{
-                position: "absolute",
-                top: "100%",
-                left: 0,
-                marginTop: 8,
-                width: 320,
-                background: "var(--bg)",
-                border: "1px solid var(--border)",
-                borderRadius: 2,
-                zIndex: 30,
-              }}
-            >
+            <div className="case-dossier-menu">
               {(cases ?? []).map((c) => (
                 <button
                   key={c.id}
@@ -815,19 +966,7 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
                     setMenuOpen(false);
                     router.push(`/board/${c.id}?cwd=${encodeURIComponent(cwd)}`);
                   }}
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "baseline",
-                    width: "100%",
-                    padding: "10px 14px",
-                    border: "none",
-                    background: c.id === caseId ? "var(--bg-panel)" : "transparent",
-                    cursor: "pointer",
-                    color: "var(--text)",
-                    fontSize: 13,
-                    textAlign: "left",
-                  }}
+                  className={`case-dossier-menu-item${c.id === caseId ? " is-active" : ""}`}
                 >
                   <span>{c.title}</span>
                   <span style={{ fontSize: 11, color: "var(--text-dim)" }}>
@@ -838,7 +977,7 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
             </div>
           )}
         </div>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 16 }}>
+        <div className="case-dossier-actions">
           <TextButton onClick={() => fileInputRef.current?.click()}>
             {importingMaterials ? tr("导入中…", "Importing…") : tr("导入材料", "Import materials")}
           </TextButton>
@@ -854,20 +993,7 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
             <div ref={wfMenuRef} style={{ position: "relative" }}>
               <TextButton onClick={() => setWfMenuOpen((open) => !open)}>{tr("启动工作流", "Start workflow")} ▾</TextButton>
               {wfMenuOpen && (
-                <div
-                  style={{
-                    position: "absolute",
-                    top: "100%",
-                    right: 0,
-                    marginTop: 8,
-                    width: 240,
-                    background: "var(--bg)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 2,
-                    zIndex: 30,
-                    padding: "4px 0",
-                  }}
-                >
+                <div className="case-dossier-menu case-workflow-menu">
                   {workflows.map((wf) => (
                     <MenuRow
                       key={wf.id}
@@ -895,11 +1021,9 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
               )}
             </div>
           )}
-          <span style={{ ...MICRO, color: "var(--text-dim)" }}>
-            {tr(CASE_TYPE_LABEL[currentCase.type], currentCase.type === "litigation" ? "Dispute" : currentCase.type === "advisory" ? "Advisory" : "Project")} · {currentCase.stage}
-          </span>
         </div>
-      </div>
+        </div>
+      </header>
 
       {uploadResult && (
         <div
@@ -913,24 +1037,61 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
         </div>
       )}
 
-      {/* 三列看板 */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}>
+      <section className="case-stage-section">
+        <CaseStageProgress
+          caseItem={currentCase}
+          stages={currentCase.type === "litigation"
+            ? ["接案", "立案", "举证", "庭前会议", "开庭", "等待判决", "执行", "结案"].map((label) => ({ id: label, label }))
+            : [{ id: currentCase.stage, label: currentCase.stage }]}
+        />
+        {currentCase.type === "litigation" && (
+          <div className="case-stage-actions">
+            <TinyButton onClick={() => void updateCaseStage("previous")} disabled={!canMoveStageBackward || Boolean(stagePending)}>回退阶段</TinyButton>
+            <TinyButton accent onClick={() => void updateCaseStage("next")} disabled={!canMoveStageForward || Boolean(stagePending)}>推进阶段</TinyButton>
+            <TinyButton onClick={() => void updateCaseStage("undo")} disabled={Boolean(stagePending)}>撤销上次变更</TinyButton>
+            {stagePending && <span className="case-stage-feedback">更新中…</span>}
+            {stageError && <span role="alert" className="case-stage-feedback is-error">{stageError}</span>}
+          </div>
+        )}
+      </section>
+
+      {caseRiskItems.length > 0 && (
+        <div role="status" className="case-urgency-strip">
+          <span className="case-urgency-strip-title">优先处理</span>
+          <span className="case-urgency-strip-detail">
+            {caseRiskItems.slice(0, 2).map((item) => `${item.title}（${formatDateRisk(item)}）`).join("；")}
+          </span>
+        </div>
+      )}
+
+      <div className="case-workgrid">
+        <div className="case-workgrid-main">
+          <div className="case-index-tabs">
+            {([
+              ["tasks", "任务"],
+              ["timeline", "时间线"],
+              ["documents", "文档"],
+            ] as const).map(([view, label]) => (
+              <button
+                key={view}
+                type="button"
+                aria-pressed={dashboardView === view}
+                onClick={() => selectDashboardView(view)}
+                className={`case-index-tab${dashboardView === view ? " is-active" : ""}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {dashboardView === "tasks" && (
+      <div className="case-task-columns">
         {COLUMNS.map((status) => {
           const columnTasks = caseTasks.filter((t) => t.status === status);
           return (
-            <section key={status}>
-              <h2
-                style={{
-                  ...MICRO,
-                  color: "var(--text-dim)",
-                  paddingBottom: 8,
-                  borderBottom: "1px solid var(--border)",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  margin: 0,
-                }}
-              >
-                <span>{tr(status, status === "待办" ? "To do" : status === "进行中" ? "In progress" : "Done")}</span>
+            <section key={status} className="case-task-column">
+              <h2 className="case-task-column-header">
+                <span>{tr(status, status === "待办" ? "To do" : status === "进行中" ? "In progress" : status === "待验收" ? "Review" : "Done")}</span>
                 <span>{columnTasks.length}</span>
               </h2>
               {columnTasks.map((task) => {
@@ -944,70 +1105,46 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
                   <div
                     key={task.id}
                     ref={menuOpenForTask ? taskMenuRef : undefined}
-                    style={{ position: "relative", marginTop: 10 }}
+                    className="case-task-card-wrap"
                     onMouseEnter={() => setHoveredTaskId(task.id)}
                     onMouseLeave={() => setHoveredTaskId(null)}
                   >
                     <Link
                       href={`/task/${task.id}?cwd=${encodeURIComponent(cwd)}`}
-                      style={{
-                        display: "block",
-                        border: "1px solid var(--border)",
-                        borderColor: hoveredTaskId === task.id ? "var(--text)" : "var(--border)",
-                        borderRadius: 2,
-                        padding: "12px 14px",
-                        background: "var(--bg)",
-                        color: "var(--text)",
-                        textDecoration: "none",
-                        transition: "border-color .12s",
-                        ...(isNew
-                          ? {
-                              // inset box-shadow instead of borderLeft: mixing border
-                              // shorthand with border-left longhand trips React's
-                              // style-conflict warning on rerender.
-                              boxShadow: "inset 3px 0 0 var(--accent)",
-                              animation: "mju-card-in .55s cubic-bezier(.16,1,.3,1) both",
-                            }
-                          : {}),
-                      }}
+                      className={`case-task-card${isNew ? " is-new" : ""}${hoveredTaskId === task.id ? " is-hovered" : ""}`}
                     >
-                      <div style={{ fontWeight: 600, fontSize: 13, paddingRight: 20 }}>{task.title}</div>
-                      <div
-                        style={{
-                          color: "var(--text-dim)",
-                          fontSize: 11,
-                          marginTop: 5,
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                        }}
-                      >
+                      <div className="case-task-card-title">{task.title}</div>
+                      {task.detail && <div className="case-task-detail">{task.detail}</div>}
+                      <div className="case-task-card-meta">
                         <span>{task.assignee}</span>
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                          {isRunning && (
-                            <>
-                              <span
-                                style={{
-                                  display: "inline-block",
-                                  width: 6,
-                                  height: 6,
-                                  background: "var(--accent)",
-                                  animation: "pulse 1.2s infinite",
-                                }}
-                              />
-                              <span style={{ ...MICRO, letterSpacing: "0.06em", color: "var(--accent)" }}>
-                                执行中
-                              </span>
-                            </>
-                          )}
+                        <span className="case-task-signals">
+                          {isRunning && <span className="case-pulse">执行中</span>}
                           {task.deadline && (
-                            <span style={{ color: overdue ? "var(--accent)" : undefined }}>
+                            <span className={overdue ? "case-task-card-deadline is-overdue" : "case-task-card-deadline"}>
                               {formatDeadline(task.deadline)}
                             </span>
                           )}
                         </span>
                       </div>
                     </Link>
+                    {status === "待验收" && (
+                      <div style={{ display: "flex", gap: 6, padding: "8px 14px 4px" }}>
+                        <button
+                          type="button"
+                          onClick={() => patchTask(task.id, { status: "完成" })}
+                          style={{ ...MICRO, padding: "4px 10px", border: "1px solid var(--text)", borderRadius: 2, background: "var(--text)", color: "var(--bg)", cursor: "pointer" }}
+                        >
+                          {tr("验收通过", "Accept")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => patchTask(task.id, { status: "进行中" })}
+                          style={{ ...MICRO, padding: "4px 10px", border: "1px solid var(--border)", borderRadius: 2, background: "transparent", color: "var(--text-muted)", cursor: "pointer" }}
+                        >
+                          {tr("继续处理", "Revise")}
+                        </button>
+                      </div>
+                    )}
                     <DotsButton
                       visible={hoveredTaskId === task.id || menuOpenForTask}
                       onClick={() => toggleTaskMenu(task.id)}
@@ -1125,83 +1262,60 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
           );
         })}
       </div>
-
-      {/* 交付物 */}
-      {deliverables && deliverables.length > 0 && (
-        <section style={{ marginTop: 32 }}>
-          <h2
-            style={{
-              ...MICRO,
-              color: "var(--text-dim)",
-              paddingBottom: 8,
-              borderBottom: "1px solid var(--border)",
-              display: "flex",
-              justifyContent: "space-between",
-              margin: 0,
-            }}
-          >
-            <span>{tr("交付物", "Deliverables")}</span>
-            <span>{deliverables.length}</span>
-          </h2>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 12 }}>
-            {deliverables.map((d) => {
-              const archived = d.status === "archived";
-              const busy = advancingId === d.id;
-              return (
-                <div
-                  key={d.id}
-                  style={{
-                    width: 220,
-                    border: "1px solid var(--border)",
-                    borderRadius: 2,
-                    padding: "10px 12px",
-                    background: "var(--bg)",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontWeight: 600,
-                      fontSize: 13,
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {d.title}
-                  </div>
-                  <div style={{ ...MICRO, letterSpacing: "0.06em", color: "var(--text-dim)", marginTop: 4 }}>
-                    {DELIVERABLE_TYPE_LABEL[d.type] ?? d.type} · v{d.version}
-                  </div>
-                  <div style={{ marginTop: 8 }}>
-                    <button
-                      type="button"
-                      disabled={archived || busy}
-                      title={archived ? "已归档" : "点击推进状态"}
-                      onClick={() => advanceDeliverable(d)}
-                      style={{
-                        ...MICRO,
-                        border: `1px solid ${deliverableStatusColor(d.status)}`,
-                        borderRadius: 2,
-                        padding: "2px 6px",
-                        background: "transparent",
-                        color: deliverableStatusColor(d.status),
-                        textDecoration: archived ? "line-through" : "none",
-                        cursor: archived || busy ? "default" : "pointer",
-                        opacity: busy ? 0.5 : 1,
-                      }}
-                    >
-                      {DELIVERABLE_STATUS_LABEL[d.status]}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          {deliverableError && (
-            <div style={{ fontSize: 11, color: "var(--accent)", marginTop: 8 }}>{deliverableError}</div>
           )}
-        </section>
-      )}
+          {dashboardView === "timeline" && <CaseTimeline events={timelineEvents} />}
+          {dashboardView === "documents" && (
+            <>
+              <CaseDocumentSummary
+                deliverables={deliverables ?? []}
+                onAdvance={advanceDeliverable}
+                advancingId={advancingId}
+                error={deliverableError}
+              />
+              {documents.length > 0 && (
+                <section className="case-materials-section">
+                  <h2 className="case-list-header">最近材料</h2>
+                  <div className="case-dossier-list">
+                    {documents.slice(0, 8).map((document) => (
+                      <a
+                        key={document.path}
+                        href={`/api/files/${document.path.split("/").filter(Boolean).map(encodeURIComponent).join("/")}?type=read`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="case-document-row"
+                      >
+                        <span className="case-document-row-title">{document.relPath}</span>
+                        <span className="case-document-row-meta">{formatDeadline(document.mtime)}</span>
+                      </a>
+                    ))}
+                  </div>
+                </section>
+              )}
+            </>
+          )}
+        </div>
+
+        <aside className="case-workgrid-rail">
+          <section className="case-rail-section">
+            <CaseRiskSummary risks={caseRisks} />
+          </section>
+          <section className="case-rail-section" aria-label="案件概览">
+            <h2 className="case-list-header">案件脉搏</h2>
+            <dl className="case-pulse-list">
+              {[
+                ["进行中", inProgressCount],
+                ["近期事项", upcomingCount],
+                ["未归档交付", openDeliverableCount],
+              ].map(([label, value]) => (
+                <div key={label as string} className="case-pulse-row">
+                  <dt>{label}</dt>
+                  <dd>{value}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+        </aside>
+      </div>
 
       {/* 工作流预览模态 */}
       {preview && (
@@ -1227,7 +1341,7 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
               border: "1px solid var(--border)",
               borderRadius: 2,
               background: "var(--bg)",
-              boxShadow: "0 20px 60px rgba(0,0,0,0.28)",
+              boxShadow: "var(--overlay-shadow)",
               overflow: "hidden",
             }}
           >
