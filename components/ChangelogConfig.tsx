@@ -99,7 +99,7 @@ export function ChangelogConfig({ onClose }: { onClose: () => void }) {
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 12, background: "rgba(0,0,0,.32)" }} onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section style={{ width: 560, maxWidth: "100%", maxHeight: "78vh", overflow: "auto", padding: 24, border: "1px solid var(--border)", borderRadius: 8, background: "var(--bg)", boxShadow: "0 24px 64px rgba(0,0,0,.18)" }} aria-label="更新日志">
+      <section style={{ width: 560, maxWidth: "100%", maxHeight: "78vh", overflow: "auto", padding: 24, border: "1px solid var(--border)", borderRadius: 8, background: "var(--bg)", boxShadow: "var(--overlay-shadow)" }} aria-label="更新日志">
         <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 18 }}>
           <div>
             <div style={{ color: "var(--accent)", fontSize: 10, fontWeight: 700, letterSpacing: ".12em" }}>MJU — CHANGELOG</div>
