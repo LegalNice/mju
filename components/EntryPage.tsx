@@ -120,7 +120,8 @@ function buildAgenda(
     });
   }
   for (const d of deadlines) {
-    if (d.status === "done") continue;
+    // proposed 期限尚未生效，不在首页展示——到「日程」确认后才会出现
+    if (d.status === "done" || d.status === "proposed") continue;
     const date = d.date.slice(0, 10);
     items.push({
       date, title: d.title, kind: "deadline",

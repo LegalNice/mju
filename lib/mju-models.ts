@@ -129,7 +129,7 @@ export interface WorkflowRun {
 }
 
 export type DeadlineType = "court" | "filing" | "client" | "internal";
-export type DeadlineStatus = "pending" | "done" | "missed";
+export type DeadlineStatus = "proposed" | "pending" | "done" | "missed";
 
 export interface Deadline {
   id: string;
@@ -139,6 +139,8 @@ export interface Deadline {
   type: DeadlineType;
   status: DeadlineStatus;
   createdAt: string;
+  /** Vault 期限 Markdown 的绝对路径。有值时状态/日期变更会同步写回该文件。 */
+  vaultPath?: string;
 }
 
 export type ScheduleType = "court-hearing" | "client-meeting" | "internal-meeting" | "other";
