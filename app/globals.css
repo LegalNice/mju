@@ -1124,8 +1124,53 @@ span.linenumber {
 .case-board .case-index-tab[aria-pressed="true"],
 .case-board .case-index-tab.is-active { border-bottom-color: var(--accent); color: var(--text); }
 
-.case-board .case-task-columns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(14px, 2vw, 22px); }
+.case-board .case-task-columns { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: clamp(14px, 2vw, 22px); }
 .case-board .case-task-column { min-width: 0; }
+.case-board .case-task-column.is-drop-target {
+  outline: 1px dashed var(--accent);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+.case-board .case-task-card-wrap.is-dragging { opacity: .35; }
+.case-board .case-task-card-wrap[draggable="true"] { cursor: grab; }
+.case-board .case-task-card-wrap[draggable="true"]:active { cursor: grabbing; }
+.case-board .case-task-filterbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.case-board .case-task-filter-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  color: var(--text-muted);
+  font: 700 10px/1.35 var(--font-mono);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  user-select: none;
+  white-space: nowrap;
+}
+.case-board .case-task-filter-toggle input { accent-color: var(--accent); margin: 0; }
+.case-board .case-task-filter-input,
+.case-board .case-task-filter-select {
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+  padding: 4px 8px;
+  outline: none;
+  min-width: 0;
+}
+.case-board .case-task-filter-input { flex: 1 1 160px; max-width: 280px; }
+.case-board .case-task-filter-input::placeholder { color: var(--text-dim); }
+.case-board .case-task-filter-input:focus,
+.case-board .case-task-filter-select:focus { border-color: var(--accent); }
 .case-board .case-task-column-header,
 .case-board .case-list-header {
   display: flex;

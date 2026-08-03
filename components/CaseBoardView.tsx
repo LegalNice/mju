@@ -319,6 +319,16 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
   const [taskMenuError, setTaskMenuError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [caseQuery, setCaseQuery] = useState("");
+  // 任务列筛选：隐藏已完成 / 关键词 / 负责人 / 优先级
+  const [taskFilter, setTaskFilter] = useState({
+    hideCompleted: false,
+    keyword: "",
+    assignee: "",
+    priority: "",
+  });
+  // HTML5 拖拽移动任务：记录被拖任务与当前悬停列
+  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [dropTargetCol, setDropTargetCol] = useState<TaskStatus | null>(null);
   const [runningSessionIds, setRunningSessionIds] = useState<Set<string>>(new Set());
   const prevRunningRef = useRef<Set<string>>(new Set());
   const [importingMaterials, setImportingMaterials] = useState(false);
@@ -400,6 +410,31 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
   const caseTasks = useMemo(
     () => (tasks ?? []).filter((t) => t.caseId === caseId && t.status !== "取消"),
     [tasks, caseId],
+  );
+
+  // 看板筛选后的任务：先过滤再按列分组；隐藏已完成 = 整列移除「完成」
+  const filteredCaseTasks = useMemo(() => {
+    const kw = taskFilter.keyword.trim().toLowerCase();
+    return caseTasks.filter((t) => {
+      if (taskFilter.hideCompleted && t.status === "完成") return false;
+      if (taskFilter.assignee && t.assignee !== taskFilter.assignee) return false;
+      if (taskFilter.priority && t.priority !== taskFilter.priority) return false;
+      if (kw) {
+        const hay = `${t.title} ${t.detail ?? ""}`.toLowerCase();
+        if (!hay.includes(kw)) return false;
+      }
+      return true;
+    });
+  }, [caseTasks, taskFilter]);
+
+  const assigneeOptions = useMemo(
+    () => Array.from(new Set(caseTasks.map((t) => t.assignee).filter(Boolean))).sort(),
+    [caseTasks],
+  );
+
+  const visibleColumns = useMemo(
+    () => COLUMNS.filter((status) => !(taskFilter.hideCompleted && status === "完成")),
+    [taskFilter.hideCompleted],
   );
 
   useEffect(() => {
@@ -1085,11 +1120,69 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
           </div>
 
           {dashboardView === "tasks" && (
+      <>
+      <div className="case-task-filterbar">
+        <label className="case-task-filter-toggle">
+          <input
+            type="checkbox"
+            checked={taskFilter.hideCompleted}
+            onChange={(e) => setTaskFilter((f) => ({ ...f, hideCompleted: e.target.checked }))}
+          />
+          <span>{tr("隐藏已完成", "Hide done")}</span>
+        </label>
+        <input
+          className="case-task-filter-input"
+          value={taskFilter.keyword}
+          placeholder={tr("筛选任务…", "Filter tasks…")}
+          onChange={(e) => setTaskFilter((f) => ({ ...f, keyword: e.target.value }))}
+        />
+        <select
+          className="case-task-filter-select"
+          value={taskFilter.assignee}
+          onChange={(e) => setTaskFilter((f) => ({ ...f, assignee: e.target.value }))}
+        >
+          <option value="">{tr("全部负责人", "All assignees")}</option>
+          {assigneeOptions.map((a) => (
+            <option key={a} value={a}>{a}</option>
+          ))}
+        </select>
+        <select
+          className="case-task-filter-select"
+          value={taskFilter.priority}
+          onChange={(e) => setTaskFilter((f) => ({ ...f, priority: e.target.value }))}
+        >
+          <option value="">{tr("全部优先级", "All priorities")}</option>
+          <option value="high">{tr("高", "High")}</option>
+          <option value="medium">{tr("中", "Medium")}</option>
+          <option value="low">{tr("低", "Low")}</option>
+        </select>
+      </div>
       <div className="case-task-columns">
-        {COLUMNS.map((status) => {
-          const columnTasks = caseTasks.filter((t) => t.status === status);
+        {visibleColumns.map((status) => {
+          const columnTasks = filteredCaseTasks.filter((t) => t.status === status);
           return (
-            <section key={status} className="case-task-column">
+            <section
+              key={status}
+              className={`case-task-column${dropTargetCol === status ? " is-drop-target" : ""}`}
+              onDragEnter={() => {
+                if (dropTargetCol !== status) setDropTargetCol(status);
+              }}
+              onDragLeave={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                  setDropTargetCol((col) => (col === status ? null : col));
+                }
+              }}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                const dragged = draggedTaskId;
+                setDraggedTaskId(null);
+                setDropTargetCol(null);
+                if (!dragged) return;
+                const task = caseTasks.find((t) => t.id === dragged);
+                if (task && task.status !== status) void patchTask(dragged, { status });
+              }}
+            >
               <h2 className="case-task-column-header">
                 <span>{tr(status, status === "待办" ? "To do" : status === "进行中" ? "In progress" : status === "待验收" ? "Review" : "Done")}</span>
                 <span>{columnTasks.length}</span>
@@ -1105,12 +1198,27 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
                   <div
                     key={task.id}
                     ref={menuOpenForTask ? taskMenuRef : undefined}
-                    className="case-task-card-wrap"
+                    className={`case-task-card-wrap${draggedTaskId === task.id ? " is-dragging" : ""}`}
+                    draggable={!menuOpenForTask}
+                    onDragStart={(e) => {
+                      setDraggedTaskId(task.id);
+                      e.dataTransfer.effectAllowed = "move";
+                      try {
+                        e.dataTransfer.setData("text/plain", task.id);
+                      } catch {
+                        // 某些浏览器要求 setData 里有实际内容，空安全处理
+                      }
+                    }}
+                    onDragEnd={() => {
+                      setDraggedTaskId(null);
+                      setDropTargetCol(null);
+                    }}
                     onMouseEnter={() => setHoveredTaskId(task.id)}
                     onMouseLeave={() => setHoveredTaskId(null)}
                   >
                     <Link
                       href={`/task/${task.id}?cwd=${encodeURIComponent(cwd)}`}
+                      draggable={false}
                       className={`case-task-card${isNew ? " is-new" : ""}${hoveredTaskId === task.id ? " is-hovered" : ""}`}
                     >
                       <div className="case-task-card-title">{task.title}</div>
@@ -1262,6 +1370,7 @@ export function CaseBoardView({ caseId }: { caseId: string }) {
           );
         })}
       </div>
+      </>
           )}
           {dashboardView === "timeline" && <CaseTimeline events={timelineEvents} />}
           {dashboardView === "documents" && (
