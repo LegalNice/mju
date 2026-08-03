@@ -148,12 +148,17 @@ function normalizeLitigationCase(caseItem: Case): Case {
             : litigationStageIndexFor(entry.stage),
           stageList.length,
         );
-        return { stageIndex, stage: stageList[stageIndex], changedAt: entry.changedAt, note: entry.note };
+        return {
+          stageIndex,
+          stage: stageList[stageIndex],
+          changedAt: entry.changedAt,
+          ...(entry.note ? { note: entry.note } : {}),
+        };
       })
     : [];
   const last = history.at(-1);
   if (!last || last.stageIndex !== stageIndex) {
-    history.push({ stageIndex, stage, changedAt: caseItem.createdAt, note: undefined });
+    history.push({ stageIndex, stage, changedAt: caseItem.createdAt });
   }
 
   return { ...caseItem, stage, stageIndex, stageHistory: history };
