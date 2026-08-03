@@ -48,3 +48,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .factory
+
+# ZCode local session state
+.zcode/

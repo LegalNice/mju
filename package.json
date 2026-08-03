@@ -1,6 +1,6 @@
 {
   "name": "@tttangerine/mju",
-  "version": "1.7.7",
+  "version": "1.8.1",
   "description": "Mju Agents: your tough but fair legal assistant, with a bundled Pi runtime and subagents",
   "license": "MIT",
   "engines": {

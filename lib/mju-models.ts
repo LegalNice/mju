@@ -14,6 +14,53 @@ export interface Client {
 export type CaseType = "advisory" | "litigation" | "project";
 export type CaseStatus = "active" | "dormant" | "closed";
 
+/** Ordered default lifecycle for litigation matters. */
+export const DEFAULT_LITIGATION_STAGES = [
+  "接案",
+  "立案",
+  "举证",
+  "庭前会议",
+  "开庭",
+  "等待判决",
+  "执行",
+  "结案",
+] as const;
+
+/** Maps stage labels persisted by earlier releases to the current lifecycle. */
+export const LEGACY_LITIGATION_STAGE_INDEX: Record<string, number> = {
+  "收案": 0,
+  "接案": 0,
+  "立案": 1,
+  "答辩": 2,
+  "举证": 2,
+  "证据交换": 2,
+  "庭前准备": 3,
+  "庭前会议": 3,
+  "开庭审理": 4,
+  "开庭": 4,
+  "裁判": 5,
+  "等待判决": 5,
+  "上诉": 5,
+  "执行": 6,
+  "结案": 7,
+};
+
+export function litigationStageIndexFor(value: unknown): number | undefined {
+  return typeof value === "string" ? LEGACY_LITIGATION_STAGE_INDEX[value] : undefined;
+}
+
+export interface CaseStageHistoryEntry {
+  stageIndex: number;
+  stage: string;
+  changedAt: string;
+}
+
+/** Clamp persisted or user-supplied litigation progress to the default lifecycle. */
+export function normalizeLitigationStageIndex(value: unknown): number {
+  const index = typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : 0;
+  return Math.min(Math.max(index, 0), DEFAULT_LITIGATION_STAGES.length - 1);
+}
+
 export interface Case {
   id: string;
   title: string;
@@ -27,6 +74,10 @@ export interface Case {
   court?: string;
   caseNumber?: string;
   stage: string;
+  /** Current position in DEFAULT_LITIGATION_STAGES; only meaningful for litigation cases. */
+  stageIndex?: number;
+  /** Audit trail of current-stage changes, oldest first. */
+  stageHistory?: CaseStageHistoryEntry[];
   status: CaseStatus;
   vaultPath: string;
   createdAt: string;
