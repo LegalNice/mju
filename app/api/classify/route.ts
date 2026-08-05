@@ -1,21 +1,13 @@
 import { NextResponse } from "next/server";
-import { completeSimple, type AssistantMessage } from "@earendil-works/pi-ai/compat";
-import { createAgentSessionServices, getAgentDir } from "@earendil-works/pi-coding-agent";
+import { completeSimple } from "@earendil-works/pi-ai/compat";
 import { getProjectStore, isProjectStore } from "@/lib/mju-route-utils";
 import { INBOX_CASE_STAGE } from "@/lib/mju-store";
-import { parseModelRef, readMjuConfig } from "@/lib/mju-config";
+import { getAssistantText, resolveSimpleModel } from "@/lib/mju-ai";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const CLASSIFY_TIMEOUT_MS = 15_000;
-
-function getAssistantText(message: AssistantMessage): string {
-  return message.content
-    .filter((block) => block.type === "text")
-    .map((block) => block.text)
-    .join("");
-}
 
 /**
  * POST { cwd, instruction } → { caseId } | { caseId: null }
@@ -36,32 +28,9 @@ export async function POST(req: Request) {
     const candidates = project.store.cases.filter((c) => c.stage !== INBOX_CASE_STAGE && c.status !== "closed");
     if (candidates.length === 0) return NextResponse.json({ caseId: null });
 
-    const services = await createAgentSessionServices({ cwd: project.cwd, agentDir: getAgentDir() });
-    // Classification is a tiny task — prefer a fast model over the (possibly
-    // huge reasoning) chat default. Preference order: ~/.mju/config.json
-    // classifyModel ("provider/id", must be available), MJU_CLASSIFY_MODEL env,
-    // known fast models, then the chat default.
-    const available = await services.modelRuntime.getAvailable();
-    const pickFast = (): { provider: string; id: string } | null => {
-      for (const ref of [readMjuConfig().classifyModel, process.env.MJU_CLASSIFY_MODEL]) {
-        if (!ref) continue;
-        const parsed = parseModelRef(ref);
-        if (parsed && available.some((m) => m.provider === parsed.provider && m.id === parsed.id)) return parsed;
-      }
-      for (const ref of ["gpt-5.4-mini", "gpt-5.3-codex-spark"]) {
-        const hit = available.find((m) => m.id === ref);
-        if (hit) return { provider: hit.provider, id: hit.id };
-      }
-      return null;
-    };
-    const fast = pickFast();
-    const provider = fast?.provider ?? services.settingsManager.getDefaultProvider();
-    const modelId = fast?.id ?? services.settingsManager.getDefaultModel();
-    if (!provider || !modelId) return NextResponse.json({ caseId: null, error: "no default model" });
-    const model = services.modelRuntime.getModel(provider, modelId);
-    if (!model) return NextResponse.json({ caseId: null, error: "default model not found" });
-    const resolved = await services.modelRuntime.getAuth(model);
-    if (!resolved?.auth.apiKey) return NextResponse.json({ caseId: null, error: "no api key" });
+    const { resolution, error: modelError } = await resolveSimpleModel(project.cwd);
+    if (!resolution) return NextResponse.json({ caseId: null, error: modelError });
+    const { model, provider, modelId, apiKey, headers } = resolution;
 
     const caseLines = candidates.map((c, i) => {
       const parties = [c.parties?.plaintiff, c.parties?.defendant, ...(c.parties?.other ?? [])].filter(Boolean).join("、");
@@ -79,8 +48,8 @@ export async function POST(req: Request) {
           timestamp: Date.now(),
         }],
       }, {
-        apiKey: resolved.auth.apiKey,
-        headers: resolved.auth.headers,
+        apiKey,
+        headers,
         maxTokens: 24,
         timeoutMs: CLASSIFY_TIMEOUT_MS,
         maxRetries: 0,
