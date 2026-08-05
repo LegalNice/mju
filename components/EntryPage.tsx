@@ -19,8 +19,6 @@ import { LanguageToggle, useI18n } from "@/components/I18nProvider";
 const LS_CWD = "mju-entry-cwd";
 const LS_LAST_CASE = "mju-last-case";
 const LS_MODEL = "mju-entry-model";
-const LS_CHANGELOG_VERSION = "mju-changelog-seen-version";
-const LS_CHANGELOG_DATE = "mju-changelog-seen-date";
 const INBOX_TITLE = "通用任务";
 
 type ConfigPanel = "models" | "skills" | "agents" | "plugins" | "theme" | "mineru" | "changelog";
@@ -507,22 +505,6 @@ export function EntryPage() {
   const classifyResultRef = useRef<ClassifyResult | null>(null);
   const modelMenuRef = useRef<HTMLDivElement | null>(null);
   const projMenuRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    try {
-      const version = process.env.NEXT_PUBLIC_APP_VERSION;
-      const today = localDateString(new Date());
-      const isNewDay = localStorage.getItem(LS_CHANGELOG_DATE) !== today;
-      const isNewVersion = Boolean(version && localStorage.getItem(LS_CHANGELOG_VERSION) !== version);
-      // 每个自然日首次进入首页都展示一次；同日安装新版本也应立即展示
-      // 新版本说明，避免用户必须等到次日才看见更新内容。
-      if (isNewDay || isNewVersion) {
-        setActiveConfig("changelog");
-        localStorage.setItem(LS_CHANGELOG_DATE, today);
-        if (version) localStorage.setItem(LS_CHANGELOG_VERSION, version);
-      }
-    } catch { /* Storage can be unavailable in restricted browser contexts. */ }
-  }, []);
 
   // Load projects once; prefer the persisted cwd when it still exists.
   useEffect(() => {
