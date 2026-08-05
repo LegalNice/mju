@@ -13,6 +13,7 @@ import { PluginsConfig } from "@/components/PluginsConfig";
 import { ThemeConfig } from "@/components/ThemeConfig";
 import { MineruConfig } from "@/components/MineruConfig";
 import { ChangelogConfig } from "@/components/ChangelogConfig";
+import { MigrateCasesModal } from "@/components/MigrateCasesModal";
 import { Wordmark } from "@/components/Wordmark";
 import { LanguageToggle, useI18n } from "@/components/I18nProvider";
 
@@ -21,7 +22,7 @@ const LS_LAST_CASE = "mju-last-case";
 const LS_MODEL = "mju-entry-model";
 const INBOX_TITLE = "通用任务";
 
-type ConfigPanel = "models" | "skills" | "agents" | "plugins" | "theme" | "mineru" | "changelog";
+type ConfigPanel = "models" | "skills" | "agents" | "plugins" | "theme" | "mineru" | "changelog" | "migrate";
 
 interface ProjectSummary {
   cwd: string;
@@ -777,6 +778,17 @@ export function EntryPage() {
   const onProjectInitialized = (p: ProjectSummary) => {
     setProjects((prev) => (prev && prev.some((x) => x.cwd === p.cwd) ? prev : [...(prev ?? []), p]));
     setProject(p); // the project effect persists the cwd to localStorage
+    // 初始化第二步：快速预检既有案卷，有候选则打开整理向导（完整扫描+AI 精修在向导内做）
+    void fetch("/api/projects/migrate/scan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd: p.cwd, quick: true }),
+    })
+      .then((res) => (res.ok ? res.json() as Promise<{ candidates?: unknown[] }> : null))
+      .then((data) => {
+        if (data && Array.isArray(data.candidates) && data.candidates.length > 0) setActiveConfig("migrate");
+      })
+      .catch(() => {});
   };
 
   /** Pin the chip to a case/inbox — same effect as a manual override in the dropdown. */
@@ -844,6 +856,7 @@ export function EntryPage() {
     { id: "agents", label: tr("智能体", "AGENTS") },
     { id: "plugins", label: tr("插件", "PLUGINS"), needsProject: true },
     { id: "mineru", label: "MINERU" },
+    { id: "migrate", label: tr("整理案卷", "MIGRATE"), needsProject: true },
     { id: "theme", label: tr("外观", "THEME") },
     { id: "changelog", label: tr("更新日志", "CHANGELOG") },
   ];
@@ -2082,6 +2095,16 @@ export function EntryPage() {
       {activeConfig === "theme" && <ThemeConfig onClose={() => setActiveConfig(null)} />}
       {activeConfig === "mineru" && <MineruConfig onClose={() => setActiveConfig(null)} />}
       {activeConfig === "changelog" && <ChangelogConfig onClose={() => setActiveConfig(null)} />}
+      {activeConfig === "migrate" && project && (
+        <MigrateCasesModal
+          cwd={project.cwd}
+          onClose={(applied) => {
+            setActiveConfig(null);
+            // 刷新案件列表与议程（project 引用变化会触发数据加载 effect）
+            if (applied) setProject((prev) => (prev ? { ...prev, caseCount: prev.caseCount + applied.casesCreated } : prev));
+          }}
+        />
+      )}
     </div>
   );
 }

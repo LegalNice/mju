@@ -15,7 +15,7 @@ export interface MaterialAnalysisResult {
   reviewTask: { task: Task; filePath: string };
 }
 
-function uniqueFileName(dir: string, baseName: string, ext: string): string {
+export function uniqueFileName(dir: string, baseName: string, ext: string): string {
   let candidate = join(dir, `${baseName}${ext}`);
   if (!existsSync(candidate)) return candidate;
   let n = 2;
@@ -34,7 +34,7 @@ function nowString(): string {
   return new Date().toISOString();
 }
 
-function createDeadlineFile(caseDir: string, title: string, date: string, status = "待办"): string {
+export function createDeadlineFile(caseDir: string, title: string, date: string, status = "待办"): string {
   const dir = join(caseDir, "期限");
   mkdirSync(dir, { recursive: true });
   const path = uniqueFileName(dir, `${date}_${title.replace(/\s+/g, "_")}`, ".md");
@@ -60,7 +60,7 @@ ${title}
   return path;
 }
 
-function createTaskFile(caseDir: string, title: string, detail: string): string {
+export function createTaskFile(caseDir: string, title: string, detail: string): string {
   const dir = join(caseDir, "任务");
   mkdirSync(dir, { recursive: true });
   const date = todayString();
